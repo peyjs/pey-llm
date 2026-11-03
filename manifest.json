@@ -1,0 +1,71 @@
+{
+  "name": "pey.llm",
+  "version": "1.0.0",
+  "architecture": "0.11",
+  "description": "The single point of contact with a large language model provider: holds the user's connection settings in memory, speaks the OpenAI-compatible chat protocol over pey.http and interprets responses. Typed feature — the program works without AI, so a failure here must never take the whole system down; dependents deactivate with REQUIRED_DEPENDENCY_UNAVAILABLE instead.",
+  "type": "feature",
+  "dependencies": {
+    "required": ["pey.http.service"],
+    "optional": []
+  },
+  "provides": [
+    {
+      "name": "pey.llm.service",
+      "description": "Provider-facing LLM calls. The API key lives only in this plugin's memory and in outgoing Authorization headers — never in events, errors, logs or return values; message text never appears there either. Provider error responses are mapped into categorized structured errors without leaking raw provider text. Streaming calls follow the shared flow pattern: the caller hands in text handlers and receives a handle with cancel() and a done promise that resolves exactly one of three endings — completed (the provider's end marker arrived), interrupted (with a standard structured error), or cancelled; no text is delivered after cancellation.",
+      "methods": [
+        {
+          "name": "setSettings",
+          "description": "Stores the user's connection settings in memory: base URL, model name and optional API key. Performs surface validation only (valid absolute http(s) base URL, non-empty model name). In-flight requests keep the settings they started with.",
+          "params": [
+            { "name": "input", "type": "{ baseUrl: string, model: string, apiKey?: string } — baseUrl is the address up to (and including) the conversation path prefix, e.g. 'https://api.openai.com/v1'" }
+          ],
+          "returns": "{ ok: true, hasApiKey: boolean }",
+          "errors": ["LLM_SETTINGS_INVALID"]
+        },
+        {
+          "name": "clearSettings",
+          "description": "Erases the stored connection settings from memory.",
+          "params": [],
+          "returns": "{ ok: true }",
+          "errors": []
+        },
+        {
+          "name": "getSettingsStatus",
+          "description": "Reports whether settings exist, the base URL and model name, and whether a key is registered. Never returns the key itself.",
+          "params": [],
+          "returns": "{ configured: boolean, baseUrl: string | null, model: string | null, hasApiKey: boolean }",
+          "errors": []
+        },
+        {
+          "name": "complete",
+          "description": "Sends a list of messages and waits for the full response text. Returns the text with its finish reason ('stop' | 'length' | 'content_filter') and, when the provider reports it, token usage. Rejects with the structured error on failure; an error status from the provider is mapped to a categorized code.",
+          "params": [
+            { "name": "messages", "type": "Array<{ role: 'system'|'user'|'assistant', content: Array<{ type: 'text', text: string }> }> — only text parts are accepted" },
+            { "name": "options", "type": "{ json?: boolean, maxTokens?: number, temperature?: number } — json asks for the provider's native JSON mode; validation of the result stays with the caller" }
+          ],
+          "returns": "Promise<{ text: string, finishReason: string, usage?: object }>",
+          "errors": ["LLM_NOT_CONFIGURED", "LLM_SETTINGS_INVALID", "LLM_UNSUPPORTED_CONTENT", "LLM_UNAUTHORIZED", "LLM_MODEL_NOT_FOUND", "LLM_RATE_LIMITED", "LLM_CONTEXT_TOO_LONG", "LLM_JSON_UNSUPPORTED", "LLM_INVALID_RESPONSE", "LLM_REQUEST_FAILED", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "SERVICE_UNAVAILABLE"]
+        },
+        {
+          "name": "stream",
+          "description": "Same conversation as complete, but the answer text is delivered progressively through handlers.onText as it arrives (SSE decoded with a streaming decoder, so a multi-byte character split across chunks stays intact). The shared flow pattern applies: the returned handle has cancel() and a done promise resolving { ending: 'completed', finishReason, usage? } | { ending: 'interrupted', error } | { ending: 'cancelled' }. A stream that closes without the provider's end marker is interrupted, never completed.",
+          "params": [
+            { "name": "messages", "type": "Array<{ role: 'system'|'user'|'assistant', content: Array<{ type: 'text', text: string }> }> — only text parts are accepted" },
+            { "name": "options", "type": "{ json?: boolean, maxTokens?: number, temperature?: number }" },
+            { "name": "handlers", "type": "{ onText: (text: string) => void }" }
+          ],
+          "returns": "Promise<{ cancel: () => void, done: Promise<{ ending: 'completed', finishReason: string, usage?: object } | { ending: 'interrupted', error: object } | { ending: 'cancelled' }> }>",
+          "errors": ["LLM_NOT_CONFIGURED", "LLM_SETTINGS_INVALID", "LLM_UNSUPPORTED_CONTENT", "LLM_UNAUTHORIZED", "LLM_MODEL_NOT_FOUND", "LLM_RATE_LIMITED", "LLM_CONTEXT_TOO_LONG", "LLM_JSON_UNSUPPORTED", "LLM_INVALID_RESPONSE", "LLM_STREAM_INTERRUPTED", "LLM_REQUEST_FAILED", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "SERVICE_UNAVAILABLE"]
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "llm:settings-changed",
+      "description": "Published when the connection settings were stored or cleared. Carries no data.",
+      "data": []
+    }
+  ],
+  "config": {}
+}

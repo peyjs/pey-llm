@@ -1,0 +1,37 @@
+{
+  "name": "pey.llm",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Single point of contact with an OpenAI-compatible LLM provider: in-memory user settings, request shaping over pey.http, categorized provider-error mapping",
+  "exports": {
+    ".": "./index.js",
+    "./manifest.json": "./manifest.json",
+    "./lib/constants.js": "./lib/constants.js",
+    "./lib/error.js": "./lib/error.js",
+    "./lib/llm-service.js": "./lib/llm-service.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "files": [
+    "manifest.json",
+    "index.js",
+    "lib/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs"
+  ],
+  "keywords": [
+    "pey",
+    "llm",
+    "ai",
+    "openai",
+    "bonyan"
+  ],
+  "license": "MIT"
+}
