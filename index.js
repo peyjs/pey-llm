@@ -36,7 +36,7 @@ function handleServiceUnavailable(event) {
   savedContext.reportCriticalError({
     code: 'REQUIRED_DEPENDENCY_LOST',
     message: `Required service ${HTTP_SERVICE} is no longer available`,
-    source: SERVICE_NAME,
+    source: PLUGIN_NAME,
     type: 'critical',
     timestamp: new Date().toISOString(),
   });
