@@ -1,6 +1,6 @@
 {
   "name": "pey.llm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Single point of contact with an OpenAI-compatible LLM provider: in-memory user settings, request shaping over pey.http, categorized provider-error mapping",
   "exports": {
