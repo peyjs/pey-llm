@@ -81,8 +81,10 @@ export function createFakeHttp(map = {}) {
     calls,
     async request(input) {
       calls.push({ kind: 'request', input });
+      // Awaiting the mapped outcome lets a rejecting map propagate like
+      // the real transport's pre-transfer rejections.
       const outcome = map.request
-        ? map.request(input)
+        ? await map.request(input)
         : { ending: 'completed', status: 200, headers: {}, body: encode(JSON.stringify(completionBody('پاسخ'))) };
       return { cancel: () => {}, done: Promise.resolve(outcome) };
     },

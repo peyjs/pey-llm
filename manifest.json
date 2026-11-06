@@ -44,7 +44,7 @@
             { "name": "options", "type": "{ json?: boolean, maxTokens?: number, temperature?: number } — json asks for the provider's native JSON mode; validation of the result stays with the caller" }
           ],
           "returns": "Promise<{ text: string, finishReason: string, usage?: object }>",
-          "errors": ["LLM_INPUT_INVALID", "LLM_NOT_CONFIGURED", "LLM_SETTINGS_INVALID", "LLM_UNSUPPORTED_CONTENT", "LLM_UNAUTHORIZED", "LLM_MODEL_NOT_FOUND", "LLM_RATE_LIMITED", "LLM_CONTEXT_TOO_LONG", "LLM_JSON_UNSUPPORTED", "LLM_INVALID_RESPONSE", "LLM_REQUEST_FAILED", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "SERVICE_UNAVAILABLE"]
+          "errors": ["LLM_INPUT_INVALID", "LLM_NOT_CONFIGURED", "LLM_UNSUPPORTED_CONTENT", "LLM_UNAUTHORIZED", "LLM_MODEL_NOT_FOUND", "LLM_RATE_LIMITED", "LLM_CONTEXT_TOO_LONG", "LLM_JSON_UNSUPPORTED", "LLM_INVALID_RESPONSE", "LLM_REQUEST_FAILED", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "SERVICE_UNAVAILABLE"]
         },
         {
           "name": "stream",
@@ -55,7 +55,7 @@
             { "name": "handlers", "type": "{ onText: (text: string) => void }" }
           ],
           "returns": "Promise<{ cancel: () => void, done: Promise<{ ending: 'completed', finishReason: string, usage?: object } | { ending: 'interrupted', error: object } | { ending: 'cancelled' }> }>",
-          "errors": ["LLM_INPUT_INVALID", "LLM_NOT_CONFIGURED", "LLM_SETTINGS_INVALID", "LLM_UNSUPPORTED_CONTENT", "LLM_UNAUTHORIZED", "LLM_MODEL_NOT_FOUND", "LLM_RATE_LIMITED", "LLM_CONTEXT_TOO_LONG", "LLM_JSON_UNSUPPORTED", "LLM_INVALID_RESPONSE", "LLM_STREAM_INTERRUPTED", "LLM_REQUEST_FAILED", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "SERVICE_UNAVAILABLE"]
+          "errors": ["LLM_INPUT_INVALID", "LLM_NOT_CONFIGURED", "LLM_UNSUPPORTED_CONTENT", "LLM_UNAUTHORIZED", "LLM_MODEL_NOT_FOUND", "LLM_RATE_LIMITED", "LLM_CONTEXT_TOO_LONG", "LLM_JSON_UNSUPPORTED", "LLM_INVALID_RESPONSE", "LLM_STREAM_INTERRUPTED", "LLM_REQUEST_FAILED", "HTTP_NETWORK_FAILED", "HTTP_TIMEOUT", "SERVICE_UNAVAILABLE"]
         }
       ]
     }

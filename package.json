@@ -9,6 +9,7 @@
     "./lib/constants.js": "./lib/constants.js",
     "./lib/error.js": "./lib/error.js",
     "./lib/llm-service.js": "./lib/llm-service.js",
+    "./lib/llm-protocol.js": "./lib/llm-protocol.js",
     "./package.json": "./package.json"
   },
   "engines": {

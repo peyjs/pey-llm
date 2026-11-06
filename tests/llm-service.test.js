@@ -29,7 +29,7 @@ function wireBody(call) {
 
 // --- settings ------------------------------------------------------------
 
-test('should_store_settings_and_report_status_without_the_key', () => {
+test('should_store_settings_and_report_status_without_the_key_when_saved', () => {
   const { service } = createService();
 
   const stored = service.setSettings(settings());
@@ -40,7 +40,7 @@ test('should_store_settings_and_report_status_without_the_key', () => {
   assert.equal(JSON.stringify(status).includes('sk-test-key'), false);
 });
 
-test('should_accept_settings_without_a_key_and_skip_the_auth_header', async () => {
+test('should_skip_the_auth_header_when_settings_have_no_key', async () => {
   const { service, http } = createService();
 
   const stored = service.setSettings(settings({ apiKey: undefined }));
@@ -51,7 +51,7 @@ test('should_accept_settings_without_a_key_and_skip_the_auth_header', async () =
   assert.equal(service.getSettingsStatus().configured, true);
 });
 
-test('should_reject_surface_invalid_settings', () => {
+test('should_reject_surface_invalid_settings_when_a_field_is_malformed', () => {
   const { service } = createService();
 
   assert.throws(() => service.setSettings({ baseUrl: 'not a url', model: 'm' }), (error) => error.code === 'LLM_SETTINGS_INVALID');
@@ -61,7 +61,7 @@ test('should_reject_surface_invalid_settings', () => {
   assert.equal(service.getSettingsStatus().configured, false);
 });
 
-test('should_clear_settings_and_publish_the_change_event_without_data', () => {
+test('should_clear_settings_and_publish_the_change_event_without_data_when_cleared', () => {
   const { service, published } = createService();
 
   service.setSettings(settings());
@@ -89,7 +89,7 @@ function userMessage(text) {
   return { role: 'user', content: [{ type: 'text', text }] };
 }
 
-test('should_return_text_finish_reason_and_usage_from_complete', async () => {
+test('should_return_text_finish_reason_and_usage_when_complete_succeeds', async () => {
   const { service, http } = createService({
     request: () => ({
       ending: 'completed',
@@ -109,7 +109,7 @@ test('should_return_text_finish_reason_and_usage_from_complete', async () => {
   assert.deepEqual(body.messages, [{ role: 'user', content: [{ type: 'text', text: 'سلام' }] }]);
 });
 
-test('should_join_base_url_with_and_without_trailing_slash_identically', async () => {
+test('should_join_the_base_url_identically_when_it_carries_trailing_slashes', async () => {
   const { service, http } = createService();
   service.setSettings(settings({ baseUrl: 'https://api.example.com/v1/' }));
   await service.complete([userMessage('سلام')]);
@@ -131,7 +131,7 @@ test('should_send_authorization_header_only_when_a_key_exists', async () => {
   assert.equal(http.calls[0].input.headers.authorization, 'Bearer sk-live');
 });
 
-test('should_map_provider_statuses_to_categorized_codes', async () => {
+test('should_map_provider_statuses_to_categorized_codes_when_the_provider_refuses', async () => {
   const cases = [
     [401, 'LLM_UNAUTHORIZED'],
     [403, 'LLM_UNAUTHORIZED'],
@@ -151,7 +151,7 @@ test('should_map_provider_statuses_to_categorized_codes', async () => {
   }
 });
 
-test('should_map_a_too_long_input_response_to_its_own_category', async () => {
+test('should_map_a_too_long_input_response_to_its_own_category_when_the_provider_reports_it', async () => {
   const { service } = createService({
     request: () => ({
       ending: 'completed',
@@ -168,7 +168,7 @@ test('should_map_a_too_long_input_response_to_its_own_category', async () => {
   );
 });
 
-test('should_map_a_json_mode_refusal_to_its_own_category', async () => {
+test('should_map_a_json_mode_refusal_to_its_own_category_when_json_mode_is_unsupported', async () => {
   const { service } = createService({
     request: () => ({
       ending: 'completed',
@@ -185,7 +185,7 @@ test('should_map_a_json_mode_refusal_to_its_own_category', async () => {
   );
 });
 
-test('should_map_other_error_statuses_to_request_failed_without_leaking_text', async () => {
+test('should_map_other_error_statuses_to_request_failed_without_leaking_text_when_no_category_fits', async () => {
   const { service } = createService({
     request: () => ({ ending: 'completed', status: 500, headers: {}, body: encode('internal boom secret-value') }),
   });
@@ -210,7 +210,7 @@ test('should_report_invalid_response_when_body_is_unreadable', async () => {
   );
 });
 
-test('should_reject_unsupported_content_parts_explicitly', async () => {
+test('should_reject_unsupported_content_parts_explicitly_when_a_part_is_not_text', async () => {
   const { service, http } = createService();
   service.setSettings(settings());
 
@@ -229,7 +229,7 @@ test('should_reject_unsupported_content_parts_explicitly', async () => {
   assert.equal(http.calls.length, 0);
 });
 
-test('should_forward_transport_network_and_timeout_codes_unchanged', async () => {
+test('should_forward_transport_network_and_timeout_codes_unchanged_when_delivery_fails', async () => {
   const { service } = createService({
     request: (input) => (input.url.includes('late')
       ? { ending: 'interrupted', error: { code: 'HTTP_TIMEOUT', message: 'timeout', source: 'pey.http', type: 'operational', timestamp: 't' } }
@@ -245,7 +245,7 @@ test('should_forward_transport_network_and_timeout_codes_unchanged', async () =>
   assert.equal(second.code, 'HTTP_TIMEOUT');
 });
 
-test('should_honor_json_and_sampling_options_in_the_request_body', async () => {
+test('should_honor_json_and_sampling_options_when_call_options_are_given', async () => {
   const { service, http } = createService();
   service.setSettings(settings());
 
@@ -257,7 +257,7 @@ test('should_honor_json_and_sampling_options_in_the_request_body', async () => {
   assert.equal(body.temperature, 0.5);
 });
 
-test('should_keep_the_settings_snapshot_of_an_in_flight_request', async () => {
+test('should_keep_the_settings_snapshot_of_an_in_flight_request_when_settings_change_mid_call', async () => {
   const { service, http } = createService({
     request: () => ({
       ending: 'completed',
@@ -278,7 +278,7 @@ test('should_keep_the_settings_snapshot_of_an_in_flight_request', async () => {
 
 // --- stream --------------------------------------------------------------
 
-test('should_deliver_stream_text_in_order_and_report_completion', async () => {
+test('should_deliver_stream_text_in_order_and_report_completion_when_the_stream_ends', async () => {
   const received = [];
   const { service, http } = createService();
   service.setSettings(settings());
@@ -292,7 +292,7 @@ test('should_deliver_stream_text_in_order_and_report_completion', async () => {
   assert.equal(wireBody(http.calls[0]).stream, true);
 });
 
-test('should_reassemble_a_multibyte_character_torn_between_stream_chunks', async () => {
+test('should_reassemble_a_multibyte_character_when_it_is_torn_between_stream_chunks', async () => {
   const received = [];
   const full = encode(`data: ${JSON.stringify(deltaEvent('سلام'))}\n\ndata: [DONE]\n\n`);
   // The two bytes of "س" (0xD8 0xB3) are deliberately torn apart between
@@ -337,7 +337,7 @@ test('should_report_invalid_response_when_a_stream_event_is_unreadable', async (
   assert.equal(final.error.code, 'LLM_INVALID_RESPONSE');
 });
 
-test('should_map_a_cut_transport_stream_to_the_llm_cut_code', async () => {
+test('should_map_a_cut_transport_stream_to_the_llm_cut_code_when_the_stream_breaks', async () => {
   const { service } = createService({
     stream: (input, handlers) => makeStreamHandle(handlers, sseChunks([deltaEvent('نیمه')], false), {
       finalEnding: { ending: 'interrupted', error: { code: 'HTTP_STREAM_INTERRUPTED', message: 'cut', source: 'pey.http', type: 'operational', timestamp: 't' } },
@@ -352,7 +352,7 @@ test('should_map_a_cut_transport_stream_to_the_llm_cut_code', async () => {
   assert.equal(final.error.code, 'LLM_STREAM_INTERRUPTED');
 });
 
-test('should_stop_delivering_text_after_cancellation_and_report_cancelled', async () => {
+test('should_stop_delivering_text_after_cancellation_and_report_cancelled_when_cancelled_mid_stream', async () => {
   const received = [];
   const gates = [createGate(), createGate(), createGate()];
   let resolveFirst = null;
@@ -391,7 +391,7 @@ test('should_stop_delivering_text_after_cancellation_and_report_cancelled', asyn
   assert.deepEqual(received, ['اول'], 'exactly the first delta may arrive before the cancel');
 });
 
-test('should_reject_stream_without_an_on_text_handler', async () => {
+test('should_reject_stream_without_an_on_text_handler_when_handlers_are_incomplete', async () => {
   const { service } = createService();
   service.setSettings(settings());
 
@@ -423,7 +423,7 @@ test('should_end_an_in_flight_stream_as_interrupted_when_deactivated', async () 
   await assert.rejects(() => service.complete([userMessage('سلام')]), (error) => error.code === 'SERVICE_UNAVAILABLE');
 });
 
-test('should_never_leak_the_key_through_stream_calls', async () => {
+test('should_never_leak_the_key_through_stream_calls_when_a_key_is_configured', async () => {
   const { service, http } = createService();
   service.setSettings(settings({ apiKey: 'sk-stream-secret' }));
 
@@ -484,4 +484,43 @@ test('should_report_cancelled_complete_when_transport_cancels_the_request', asyn
     () => service.complete([userMessage('سلام')]),
     (error) => error.code === 'LLM_REQUEST_FAILED',
   );
+});
+
+test('should_map_the_transport_rejection_when_the_call_is_refused_before_transfer', async () => {
+  // pey.http can reject before any transfer runs (address policy,
+  // validation): that rejection crosses the boundary through the delivery
+  // mapping, never as an undeclared raw code.
+  const { service } = createService({
+    request: () => Promise.reject(Object.assign(new Error('forbidden'), {
+      code: 'HTTP_URL_FORBIDDEN', source: 'pey.http', type: 'operational', timestamp: 't',
+    })),
+  });
+  service.setSettings(settings({ baseUrl: 'http://myserver:8080/v1' }));
+
+  await assert.rejects(
+    () => service.complete([userMessage('سلام')]),
+    (error) => error.code === 'LLM_REQUEST_FAILED' && error.source === 'pey.llm',
+  );
+});
+
+test('should_end_the_stream_as_unavailable_when_deactivation_lands_before_the_transport_resolves', async () => {
+  const gates = [createGate()];
+  let resolvedTransport = false;
+  const { service, deactivate } = createService({
+    stream: (input, handlers) => {
+      resolvedTransport = true;
+      return makeStreamHandle(handlers, [encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\n`)], { gates });
+    },
+  });
+  service.setSettings(settings());
+
+  const handlePromise = service.stream([userMessage('سلام')], undefined, { onText: () => {} });
+  deactivate();
+  gates[0].open();
+  void resolvedTransport;
+  const handle = await handlePromise;
+  const final = await handle.done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE', 'no fake completion for a dead plugin');
 });

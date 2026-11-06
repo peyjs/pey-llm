@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- The transport's immediate rejections (address policy, validation) now cross the boundary through the delivery mapping (`LLM_REQUEST_FAILED`) instead of leaking undeclared `HTTP_*` codes.
+- A deactivation landing while the transport was being resolved cancels the transfer right away, and a stream completing after deactivation reports the standard unavailable error instead of a fake completion.
+- The dead `sink.text` accumulation (the answer text was kept for no reader) and the stale `PLUGIN_VERSION` constant are gone; `LLM_SETTINGS_INVALID` is no longer declared for `complete`/`stream` (only `setSettings` throws it); `lib/llm-protocol.js` is listed in the reference structure and exported like the other lib modules.
+
+### Fixed
+
 - A provider error status on `stream` now maps to its categorized code (`LLM_UNAUTHORIZED`, `LLM_RATE_LIMITED`, …) instead of always reading as a mid-stream cut; the transport delivers non-2xx as an ordinary completed result and the mapping was only wired for `complete`.
 - A throwing `onText` handler no longer escapes into the transport's read loop: the transfer stops and the stream ends interrupted with `LLM_REQUEST_FAILED`.
 - `LLM_INPUT_INVALID` is declared in the manifest for both methods, closing the manifest/reference mismatch.
