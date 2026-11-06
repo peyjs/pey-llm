@@ -9,17 +9,28 @@ const MANIFEST_PATH = new URL('../manifest.json', import.meta.url);
 const PACKAGE_PATH = new URL('../package.json', import.meta.url);
 
 function createPrepareContext(overrides = {}) {
-  return {
+  const context = {};
+  Object.assign(context, {
     config: {},
     events: {
-      publish: () => {},
-      subscribe: () => () => {},
+      published: [],
+      listeners: {},
+      publish() {},
+      subscribe(type, listener) {
+        this.listeners[type] = this.listeners[type] ?? [];
+        this.listeners[type].push(listener);
+        return () => {
+          const index = this.listeners[type].indexOf(listener);
+          if (index !== -1) this.listeners[type].splice(index, 1);
+        };
+      },
     },
     onShutdown: null,
     onDeactivated: null,
-    reportCriticalError: () => {},
+    reportCriticalError: (error) => context.events.published.push({ type: 'critical', data: error }),
     ...overrides,
-  };
+  });
+  return context;
 }
 
 test('should_register_service_when_prepare_is_called', async () => {
@@ -36,11 +47,59 @@ test('should_register_service_when_prepare_is_called', async () => {
   assert.equal(typeof context.onDeactivated, 'function');
 });
 
-test('should_reject_activation_when_the_transport_dependency_is_missing', async () => {
+test('should_reject_activation_with_a_structured_startup_error_when_the_dependency_is_missing', async () => {
   await prepare(createPrepareContext());
 
-  await assert.rejects(() => activate({}), /pey.http.service/);
+  await assert.rejects(
+    () => activate({}),
+    (error) => error.code === 'REQUIRED_DEPENDENCY_UNAVAILABLE'
+      && error.type === 'startup'
+      && error.source === 'pey.llm',
+  );
   await activate({ 'pey.http.service': {} });
+});
+
+test('should_report_critical_error_when_the_transport_dependency_is_lost_at_runtime', async () => {
+  const context = createPrepareContext();
+  await prepare(context);
+
+  context.events.listeners['core:service-unavailable'][0]({
+    data: { serviceName: 'pey.http.service' },
+  });
+
+  const critical = context.events.published.find((entry) => entry.type === 'critical');
+  assert.equal(critical.data.code, 'REQUIRED_DEPENDENCY_LOST');
+  assert.equal(critical.data.type, 'critical');
+});
+
+test('should_ignore_unrelated_service_loss_when_notified', async () => {
+  const context = createPrepareContext();
+  await prepare(context);
+
+  context.events.listeners['core:service-unavailable'][0]({
+    data: { serviceName: 'other.service' },
+  });
+
+  assert.equal(context.events.published.find((entry) => entry.type === 'critical'), undefined);
+});
+
+test('should_unsubscribe_from_service_unavailable_when_shutdown', async () => {
+  const context = createPrepareContext();
+  await prepare(context);
+  assert.equal(context.events.listeners['core:service-unavailable'].length, 1);
+
+  await context.onShutdown();
+
+  assert.equal(context.events.listeners['core:service-unavailable'].length, 0, 'shutdown must leave the bus');
+});
+
+test('should_unsubscribe_from_service_unavailable_when_deactivated', async () => {
+  const context = createPrepareContext();
+  await prepare(context);
+
+  context.onDeactivated();
+
+  assert.equal(context.events.listeners['core:service-unavailable'].length, 0, 'deactivation must leave the bus');
 });
 
 test('should_refuse_calls_before_activation', async () => {

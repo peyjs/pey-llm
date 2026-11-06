@@ -12,7 +12,7 @@ import {
   errorBody,
   makeStreamHandle,
   settings,
-  sleep,
+  createGate,
   sseChunks,
 } from './fakes.js';
 
@@ -354,6 +354,11 @@ test('should_map_a_cut_transport_stream_to_the_llm_cut_code', async () => {
 
 test('should_stop_delivering_text_after_cancellation_and_report_cancelled', async () => {
   const received = [];
+  const gates = [createGate(), createGate(), createGate()];
+  let resolveFirst = null;
+  const firstDelivered = new Promise((resolve) => {
+    resolveFirst = resolve;
+  });
   const { service } = createService({
     stream: (input, handlers) => makeStreamHandle(
       handlers,
@@ -362,21 +367,28 @@ test('should_stop_delivering_text_after_cancellation_and_report_cancelled', asyn
         encode(`data: ${JSON.stringify(deltaEvent('دوم'))}\n\n`),
         encode('data: [DONE]\n\n'),
       ],
-      { delayMs: 15 },
+      { gates },
     ),
   });
   service.setSettings(settings());
 
-  const handle = await service.stream([userMessage('سلام')], undefined, { onText: (text) => received.push(text) });
-  await sleep(25);
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: (text) => {
+      received.push(text);
+      resolveFirst?.();
+    },
+  });
+  // Open the first gate so exactly one delta is delivered, then cancel
+  // before the second gate opens — fully deterministic, no timers.
+  gates[0].open();
+  await firstDelivered;
   handle.cancel();
+  gates[1].open();
+  gates[2].open();
   const final = await handle.done;
 
   assert.equal(final.ending, 'cancelled');
-  const countAtCancel = received.length;
-  assert.ok(countAtCancel >= 1 && countAtCancel < 2, `chunks delivered before cancel: ${countAtCancel}`);
-  await sleep(40);
-  assert.equal(received.length, countAtCancel);
+  assert.deepEqual(received, ['اول'], 'exactly the first delta may arrive before the cancel');
 });
 
 test('should_reject_stream_without_an_on_text_handler', async () => {
@@ -390,17 +402,20 @@ test('should_reject_stream_without_an_on_text_handler', async () => {
 });
 
 test('should_end_an_in_flight_stream_as_interrupted_when_deactivated', async () => {
+  const gates = [createGate(), createGate()];
   const { service, deactivate } = createService({
     stream: (input, handlers) => makeStreamHandle(
       handlers,
       [encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\n`), encode(`data: ${JSON.stringify(deltaEvent('دوم'))}\n\n`)],
-      { delayMs: 20 },
+      { gates },
     ),
   });
   service.setSettings(settings());
 
   const handle = await service.stream([userMessage('سلام')], undefined, { onText: () => {} });
   deactivate();
+  gates[0].open();
+  gates[1].open();
   const final = await handle.done;
 
   assert.equal(final.ending, 'interrupted');
@@ -417,4 +432,56 @@ test('should_never_leak_the_key_through_stream_calls', async () => {
 
   assert.equal(http.calls[0].input.headers.authorization, 'Bearer sk-stream-secret');
   assert.equal(JSON.stringify(final).includes('sk-stream-secret'), false);
+});
+
+test('should_map_provider_error_status_in_stream_when_provider_rejects', async () => {
+  // pey.http delivers a non-2xx status as an ordinary completed result;
+  // the categorized code must survive into the stream ending.
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, [], {
+      finalEnding: { ending: 'completed', status: 401, headers: {}, body: encode(JSON.stringify(errorBody('bad key'))) },
+    }),
+  });
+  service.setSettings(settings());
+
+  const final = await (await service.stream([userMessage('سلام')], undefined, { onText: () => {} })).done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'LLM_UNAUTHORIZED');
+  assert.ok(!JSON.stringify(final.error).includes('bad key'), 'the provider text must not leak');
+});
+
+test('should_end_stream_as_request_failed_when_the_on_text_handler_throws', async () => {
+  const gates = [createGate()];
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(
+      handlers,
+      [encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\n`)],
+      { gates },
+    ),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: () => {
+      throw new Error('consumer bug');
+    },
+  });
+  gates[0].open();
+  const final = await handle.done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'LLM_REQUEST_FAILED', 'a handler bug is not a stream interruption');
+});
+
+test('should_report_cancelled_complete_when_transport_cancels_the_request', async () => {
+  const { service } = createService({
+    request: () => ({ ending: 'cancelled' }),
+  });
+  service.setSettings(settings());
+
+  await assert.rejects(
+    () => service.complete([userMessage('سلام')]),
+    (error) => error.code === 'LLM_REQUEST_FAILED',
+  );
 });

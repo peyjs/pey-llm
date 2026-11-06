@@ -5,8 +5,17 @@ export function encode(text) {
   return new TextEncoder().encode(text);
 }
 
-export function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * A manual gate for deterministic stream pacing: chunk delivery waits on
+ * `wait()` until the test calls `open()`. Replaces real timers so tests
+ * never depend on wall-clock scheduling.
+ */
+export function createGate() {
+  let openGate = null;
+  const promise = new Promise((resolve) => {
+    openGate = resolve;
+  });
+  return { wait: () => promise, open: openGate };
 }
 
 export function deltaEvent(text, extra = {}) {
@@ -35,19 +44,21 @@ export function sseChunks(events, endMarker = true) {
  * captured onChunk handler, honoring cancellation like a real body
  * reader would.
  */
-export function makeStreamHandle(handlers, byteChunks, { delayMs = 0, finalEnding } = {}) {
+export function makeStreamHandle(handlers, byteChunks, { gates = null, finalEnding } = {}) {
   let cancelled = false;
   return {
     cancel() {
       cancelled = true;
     },
     done: (async () => {
-      for (const chunk of byteChunks) {
-        await sleep(delayMs);
+      for (let index = 0; index < byteChunks.length; index += 1) {
+        if (gates !== null) {
+          await gates[index].wait();
+        }
         if (cancelled) {
           return { ending: 'cancelled' };
         }
-        handlers.onChunk(chunk);
+        handlers.onChunk(byteChunks[index]);
       }
       if (cancelled) {
         return { ending: 'cancelled' };
