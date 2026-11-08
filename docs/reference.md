@@ -14,7 +14,7 @@ The single point of contact with a large language model provider. It holds the u
 - `index.js` — Bonyan two-phase entry point (`prepare` / `activate`).
 - `lib/constants.js` — plugin name, service name, error codes, protocol constants.
 - `lib/error.js` — standard Bonyan error factory.
-- `lib/llm-protocol.js` — کمک‌تابع‌های خالص پروتکل OpenAI (ساخت پیام/بدنه، نگاشت خطای وضعیت، تجزیه SSE).
+- `lib/llm-protocol.js` — pure OpenAI-protocol helpers (message/body shaping, provider-status error mapping, SSE parsing).
 - `lib/llm-service.js` — settings, request shaping, SSE decoding, error mapping.
 - `tests/` — unit tests (`node:test`, fake `pey.http` only).
 

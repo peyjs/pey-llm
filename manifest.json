@@ -1,6 +1,6 @@
 {
   "name": "pey.llm",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "architecture": "0.11",
   "description": "The single point of contact with a large language model provider: holds the user's connection settings in memory, speaks the OpenAI-compatible chat protocol over pey.http and interprets responses. Typed feature — the program works without AI, so a failure here must never take the whole system down; dependents deactivate with REQUIRED_DEPENDENCY_UNAVAILABLE instead.",
   "type": "feature",

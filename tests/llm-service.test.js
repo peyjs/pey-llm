@@ -503,6 +503,46 @@ test('should_map_the_transport_rejection_when_the_call_is_refused_before_transfe
   );
 });
 
+test('should_map_the_stream_rejection_when_the_call_is_refused_before_transfer', async () => {
+  // Same delivery mapping as complete: pey.http may reject the stream call
+  // before any transfer runs, and the boundary never leaks the raw code.
+  const { service } = createService({
+    stream: () => Promise.reject(Object.assign(new Error('forbidden'), {
+      code: 'HTTP_URL_FORBIDDEN', source: 'pey.http', type: 'operational', timestamp: 't',
+    })),
+  });
+  service.setSettings(settings({ baseUrl: 'http://myserver:8080/v1' }));
+
+  await assert.rejects(
+    () => service.stream([userMessage('سلام')], undefined, { onText: () => {} }),
+    (error) => error.code === 'LLM_REQUEST_FAILED' && error.source === 'pey.llm',
+  );
+});
+
+test('should_refuse_the_result_when_the_completion_lands_after_deactivation', async () => {
+  // The same guard stream applies: a transfer settling completed after
+  // deactivation is never an ordinary answer for a dead plugin.
+  const gate = createGate();
+  const { service, deactivate } = createService({
+    request: () => ({
+      cancel: () => gate.open(),
+      done: gate.wait().then(() => ({
+        ending: 'completed', status: 200, headers: {}, body: encode(JSON.stringify(completionBody('پاسخ دیرهنگام'))),
+      })),
+    }),
+  });
+  service.setSettings(settings());
+
+  const pending = service.complete([userMessage('سلام')]);
+  deactivate();
+  gate.open();
+
+  await assert.rejects(
+    () => pending,
+    (error) => error.code === 'SERVICE_UNAVAILABLE',
+  );
+});
+
 test('should_end_the_stream_as_unavailable_when_deactivation_lands_before_the_transport_resolves', async () => {
   const gates = [createGate()];
   let resolvedTransport = false;

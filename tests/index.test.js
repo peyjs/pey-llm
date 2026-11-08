@@ -102,7 +102,7 @@ test('should_unsubscribe_from_service_unavailable_when_deactivated', async () =>
   assert.equal(context.events.listeners['core:service-unavailable'].length, 0, 'deactivation must leave the bus');
 });
 
-test('should_refuse_calls_before_activation', async () => {
+test('should_refuse_calls_when_called_before_activation', async () => {
   const context = createPrepareContext();
   const registrations = await prepare(context);
 
