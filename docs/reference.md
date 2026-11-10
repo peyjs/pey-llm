@@ -86,7 +86,7 @@ No message text, no key — the event carries nothing at all.
 | `LLM_STREAM_INTERRUPTED` | The stream was cut mid-way or closed without the end marker. | operational |
 | `LLM_REQUEST_FAILED` | Any other provider refusal or delivery failure. | operational |
 | `HTTP_NETWORK_FAILED` / `HTTP_TIMEOUT` | Passed through unchanged from `pey.http` — the caller must tell connection loss and timeouts apart. | operational |
-| `SERVICE_UNAVAILABLE` | Called before activation or after deactivation/shutdown; an in-flight stream ends interrupted with this code. | operational |
+| `SERVICE_UNAVAILABLE` | Called before activation or after deactivation/shutdown; any settlement of an in-flight request (both `complete` and `stream`, whatever shape the transport ended in — provider status, delivery error or handler failure included) reports this code after deactivation, with `stream` shaping it as an interrupted ending. | operational |
 
 Error messages are fixed and safe: no key, no message text, no raw provider output — not even in details. Branch on `code`, never on `message`.
 

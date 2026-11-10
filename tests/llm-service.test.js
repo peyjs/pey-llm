@@ -595,6 +595,79 @@ test('should_report_the_same_unavailable_error_when_an_interrupted_transfer_land
   assert.equal(final.error.source, 'pey.llm');
 });
 
+test('should_report_unavailable_when_an_interrupted_complete_settles_after_deactivation', async () => {
+  // The fourth combination of the one-rule matrix: a complete whose
+  // transport ends interrupted after deactivation — previously the raw
+  // HTTP_TIMEOUT with source pey.http leaked through.
+  const gate = createGate();
+  const { service, deactivate } = createService({
+    request: () => ({
+      cancel: () => gate.open(),
+      done: gate.wait().then(() => ({
+        ending: 'interrupted',
+        error: { code: 'HTTP_TIMEOUT', message: 'timed out', source: 'pey.http', type: 'operational', timestamp: 't' },
+      })),
+    }),
+  });
+  service.setSettings(settings());
+
+  const pending = service.complete([userMessage('سلام')]);
+  deactivate();
+  gate.open();
+
+  await assert.rejects(
+    () => pending,
+    (error) => error.code === 'SERVICE_UNAVAILABLE' && error.source === 'pey.llm',
+  );
+});
+
+test('should_report_unavailable_when_a_non_2xx_stream_settles_after_deactivation', async () => {
+  // The other missing combination: a stream settling completed with a 401
+  // after deactivation — previously the categorized LLM_UNAUTHORIZED
+  // surfaced for a dead plugin.
+  const gate = createGate();
+  const { service, deactivate } = createService({
+    stream: () => makeStreamHandle(() => {}, [], {
+      gates: [gate],
+      finalEnding: { ending: 'completed', status: 401, headers: {}, body: encode(JSON.stringify({ error: { message: 'nope' } })) },
+    }),
+  });
+  service.setSettings(settings());
+
+  const handlePromise = service.stream([userMessage('سلام')], undefined, { onText: () => {} });
+  deactivate();
+  gate.open();
+  const handle = await handlePromise;
+  const final = await handle.done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(final.error.source, 'pey.llm');
+});
+
+test('should_report_unavailable_when_the_handler_fails_and_deactivation_lands_before_settlement', async () => {
+  // The guard precedes the handlerFailed branch: a throwing onText plus a
+  // deactivation in the same window reports the standard unavailable
+  // error, never the delivery-shaped handler failure.
+  const gate = createGate();
+  const { service, deactivate } = createService({
+    stream: () => makeStreamHandle(() => {
+      throw new Error('handler exploded');
+    }, [encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\n`)], { gates: [gate] }),
+  });
+  service.setSettings(settings());
+
+  const handlePromise = service.stream([userMessage('سلام')], undefined, { onText: () => {} });
+  deactivate();
+  gate.open();
+  const handle = await handlePromise;
+  const final = await handle.done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(final.error.source, 'pey.llm');
+});
+
 test('should_end_the_stream_as_unavailable_when_deactivation_lands_before_the_transport_resolves', async () => {
   const gates = [createGate()];
   let resolvedTransport = false;
