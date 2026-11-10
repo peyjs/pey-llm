@@ -519,6 +519,70 @@ test('should_map_the_stream_rejection_when_the_call_is_refused_before_transfer',
   );
 });
 
+test('should_report_unavailable_when_a_rejected_request_lands_after_deactivation', async () => {
+  // The acquisition window with a REJECTING transport: deactivate during
+  // the await must surface the standard unavailable error, never the
+  // delivery-mapped transport code for a dead plugin.
+  const { service, deactivate } = createService({
+    request: () => new Promise((resolve, reject) => {
+      setTimeout(() => reject(Object.assign(new Error('network down'), {
+        code: 'HTTP_NETWORK_FAILED', source: 'pey.http', type: 'operational', timestamp: 't',
+      })), 5);
+    }),
+  });
+  service.setSettings(settings());
+
+  const pending = service.complete([userMessage('سلام')]);
+  deactivate();
+  await assert.rejects(
+    () => pending,
+    (error) => error.code === 'SERVICE_UNAVAILABLE' && error.source === 'pey.llm',
+  );
+});
+
+test('should_refuse_the_settings_methods_when_called_after_deactivation', async () => {
+  // The availability rule covers ALL five methods: a dead plugin neither
+  // stores settings, clears them, reports them, nor publishes the
+  // settings-changed event.
+  const { service, deactivate, published } = createService();
+  deactivate();
+
+  assert.throws(() => service.setSettings(settings()), (error) => error.code === 'SERVICE_UNAVAILABLE');
+  assert.throws(() => service.clearSettings(), (error) => error.code === 'SERVICE_UNAVAILABLE');
+  assert.throws(() => service.getSettingsStatus(), (error) => error.code === 'SERVICE_UNAVAILABLE');
+  assert.ok(!published.some((event) => event.type === 'llm:settings-changed'), 'no settings event for a dead plugin');
+});
+
+test('should_not_leak_a_raw_cancel_failure_through_the_windows_or_the_handle', async () => {
+  // The windowed cancels and the returned handle use the same defensive
+  // cancel as deactivate's cleanup loop: a throwing cancel on a settling
+  // transfer never crosses the boundary raw.
+  let cancelCalls = 0;
+  const { service, deactivate } = createService({
+    stream: () => ({
+      cancel: () => {
+        cancelCalls += 1;
+        throw new Error('cancel exploded');
+      },
+      done: Promise.resolve({ ending: 'completed', status: 200, headers: {}, body: new Uint8Array() }),
+    }),
+  });
+  service.setSettings(settings());
+
+  const handlePromise = service.stream([userMessage('سلام')], undefined, { onText: () => {} });
+  deactivate();
+  const handle = await handlePromise;
+
+  // Every cancel path is defensive: deactivate's cleanup loop, the
+  // acquisition window and the returned handle all swallow a throwing
+  // cancel instead of leaking it raw.
+  assert.doesNotThrow(() => handle.cancel());
+  assert.equal(cancelCalls, 2, 'the cleanup loop and the handle both reached the cancel');
+  const final = await handle.done;
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+});
+
 test('should_refuse_the_result_when_the_completion_lands_after_deactivation', async () => {
   // The same guard stream applies: a transfer settling completed after
   // deactivation is never an ordinary answer for a dead plugin.
