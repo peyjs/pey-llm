@@ -543,6 +543,58 @@ test('should_refuse_the_result_when_the_completion_lands_after_deactivation', as
   );
 });
 
+test('should_report_the_same_unavailable_error_when_a_non_2xx_completion_lands_after_deactivation', async () => {
+  // One settlement rule for both methods: a non-2xx provider status that
+  // settles after deactivation must surface as the standard unavailable
+  // error, never as the categorized provider code.
+  const gate = createGate();
+  const { service, deactivate } = createService({
+    request: () => ({
+      cancel: () => gate.open(),
+      done: gate.wait().then(() => ({
+        ending: 'completed', status: 401, headers: {}, body: encode(JSON.stringify({ error: { message: 'nope' } })),
+      })),
+    }),
+  });
+  service.setSettings(settings());
+
+  const pending = service.complete([userMessage('سلام')]);
+  deactivate();
+  gate.open();
+
+  await assert.rejects(
+    () => pending,
+    (error) => error.code === 'SERVICE_UNAVAILABLE' && error.source === 'pey.llm',
+  );
+});
+
+test('should_report_the_same_unavailable_error_when_an_interrupted_transfer_lands_after_deactivation', async () => {
+  // stream: a transport interruption settling after deactivation must
+  // surface as the standard unavailable error with source pey.llm — never
+  // the raw transport code with source pey.http.
+  const gate = createGate();
+  const { service, deactivate } = createService({
+    stream: () => makeStreamHandle(() => {}, [], {
+      gates: [gate],
+      finalEnding: {
+        ending: 'interrupted',
+        error: { code: 'HTTP_TIMEOUT', message: 'timed out', source: 'pey.http', type: 'operational', timestamp: 't' },
+      },
+    }),
+  });
+  service.setSettings(settings());
+
+  const handlePromise = service.stream([userMessage('سلام')], undefined, { onText: () => {} });
+  deactivate();
+  gate.open();
+  const handle = await handlePromise;
+  const final = await handle.done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(final.error.source, 'pey.llm');
+});
+
 test('should_end_the_stream_as_unavailable_when_deactivation_lands_before_the_transport_resolves', async () => {
   const gates = [createGate()];
   let resolvedTransport = false;

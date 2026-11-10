@@ -1,7 +1,7 @@
 # pey.llm
 
 [![AI](https://img.shields.io/badge/Built%20with-AI-blueviolet)](#)
-[![version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
+[![version](https://img.shields.io/badge/version-1.0.2-blue.svg)](#)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Bonyan Architecture](https://img.shields.io/badge/bonyan-0.11-56c3bf)](https://github.com/barnevis/bonyan)
 
@@ -16,6 +16,7 @@ Feature plugin of the Pey ecosystem: the single point of contact with an OpenAI-
 - `index.js` — Bonyan two-phase entry point (`prepare` / `activate`).
 - `lib/constants.js` — plugin names, error codes, protocol constants.
 - `lib/error.js` — standard Bonyan error factory.
+- `lib/llm-protocol.js` — pure OpenAI-protocol helpers (message/body shaping, provider-status error mapping, SSE parsing).
 - `lib/llm-service.js` — settings, request shaping, SSE decoding, error mapping.
 - `tests/` — unit tests (`node:test`, fake transport only).
 

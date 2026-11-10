@@ -16,7 +16,7 @@ test('should_return_an_empty_body_when_options_are_absent', () => {
   assert.deepEqual(buildOptions({}), {});
 });
 
-test('should_refuse_non_object_options_with_a_structured_error', () => {
+test('should_refuse_non_object_options_when_options_are_not_an_object', () => {
   for (const bad of ['json', 42, []]) {
     assert.throws(() => buildOptions(bad), (error) => error.code === ERROR_CODES.INPUT_INVALID);
   }
@@ -39,12 +39,12 @@ test('should_reject_invalid_max_tokens_and_temperature_when_out_of_range', () =>
 
 // --- classifyBadRequest ---------------------------------------------------
 
-test('should_classify_json_mode_failures_from_the_provider_message', () => {
+test('should_classify_json_mode_failures_when_the_provider_message_names_json_mode', () => {
   assert.equal(classifyBadRequest({ error: { message: 'response_format is not supported' } }), ERROR_CODES.JSON_UNSUPPORTED);
   assert.equal(classifyBadRequest({ error: { message: 'JSON mode unavailable' } }), ERROR_CODES.JSON_UNSUPPORTED);
 });
 
-test('should_classify_context_and_model_failures_from_the_provider_message', () => {
+test('should_classify_context_and_model_failures_when_the_provider_message_names_them', () => {
   assert.equal(classifyBadRequest({ error: { message: 'context length exceeded' } }), ERROR_CODES.CONTEXT_TOO_LONG);
   assert.equal(classifyBadRequest({ error: { message: 'Input is too long for this model' } }), ERROR_CODES.CONTEXT_TOO_LONG);
   assert.equal(classifyBadRequest({ error: { message: 'The model does not exist' } }), ERROR_CODES.MODEL_NOT_FOUND);
@@ -59,7 +59,7 @@ test('should_fall_back_to_request_failed_when_the_400_body_is_unreadable', () =>
 
 // --- normalizeFinishReason ------------------------------------------------
 
-test('should_pass_declared_finish_reasons_through_and_null_the_rest', () => {
+test('should_pass_declared_finish_reasons_through_when_reading_and_null_the_rest', () => {
   for (const reason of FINISH_REASONS) {
     assert.equal(normalizeFinishReason(reason), reason);
   }
@@ -76,7 +76,7 @@ function makeSink() {
   return sink;
 }
 
-test('should_feed_deltas_across_chunk_boundaries_until_the_end_marker', () => {
+test('should_feed_deltas_across_chunk_boundaries_until_the_end_marker_arrives', () => {
   const sink = makeSink();
   const feed = createSseParser(sink);
 
@@ -88,7 +88,7 @@ test('should_feed_deltas_across_chunk_boundaries_until_the_end_marker', () => {
   assert.equal(sink.done, true, 'the end marker closes the parser');
 });
 
-test('should_ignore_empty_data_lines_and_keep_reading', () => {
+test('should_ignore_empty_data_lines_when_the_payload_is_blank', () => {
   const sink = makeSink();
   const feed = createSseParser(sink);
 

@@ -7,9 +7,6 @@
 - The transport's immediate rejections (address policy, validation) now cross the boundary through the delivery mapping (`LLM_REQUEST_FAILED`) instead of leaking undeclared `HTTP_*` codes.
 - A deactivation landing while the transport was being resolved cancels the transfer right away, and a stream completing after deactivation reports the standard unavailable error instead of a fake completion.
 - The dead `sink.text` accumulation (the answer text was kept for no reader) and the stale `PLUGIN_VERSION` constant are gone; `LLM_SETTINGS_INVALID` is no longer declared for `complete`/`stream` (only `setSettings` throws it); `lib/llm-protocol.js` is listed in the reference structure and exported like the other lib modules.
-
-### Fixed (third review pass)
-
 - The `completed` branch of `complete` now applies the same guard as `stream`: a completion landing after deactivation throws the standard unavailable error instead of returning an ordinary answer for a dead plugin (dedicated gate test added for both timings).
 - `tests/llm-protocol.test.js` added: `buildOptions` boundaries, `classifyBadRequest` wording classes, `normalizeFinishReason` and the SSE parser's edge states (partial lines across chunks, empty `data:` lines, unreadable events, finish reason/usage).
 - The immediate stream-rejection mapping and the Persian structure line in the reference are covered/cleaned; one test name moved to the `should_..._when_...` convention.
