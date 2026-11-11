@@ -76,7 +76,7 @@ function makeSink() {
   return sink;
 }
 
-test('should_feed_deltas_across_chunk_boundaries_until_the_end_marker_arrives', () => {
+test('should_feed_deltas_across_chunk_boundaries_when_chunks_carry_partial_lines_until_the_end_marker', () => {
   const sink = makeSink();
   const feed = createSseParser(sink);
 

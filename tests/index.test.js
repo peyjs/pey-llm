@@ -112,7 +112,7 @@ test('should_refuse_calls_when_called_before_activation', async () => {
   );
 });
 
-test('should_keep_the_settings_methods_usable_between_prepare_and_activate_while_the_conversation_methods_stay_refused', async () => {
+test('should_keep_the_settings_methods_usable_between_prepare_and_activate_when_the_conversation_methods_stay_refused', async () => {
   // The documented contract (reference, Settings section): unlike the
   // conversation methods, the settings methods stay usable in the
   // pre-activation window — the service-level guard for them must never
