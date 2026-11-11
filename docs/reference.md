@@ -31,7 +31,7 @@ The service `pey.llm.service` provides five methods.
 
 #### `setSettings({ baseUrl, model, apiKey? })`
 
-Stores the connection settings in memory (nothing is persisted; closing the app forgets them). `baseUrl` is the address up to the conversation path prefix (e.g. `https://api.openai.com/v1`) — the plugin appends `/chat/completions` itself and tolerates any number of trailing slashes. The key is optional: local models and self-hosted proxies may not need one, and then no Authorization header is sent. Surface validation only: absolute http(s) URL, non-empty model name. Throws `LLM_SETTINGS_INVALID` on bad input and `SERVICE_UNAVAILABLE` after deactivation/shutdown (unlike the conversation methods, the settings methods stay usable between prepare and activate). Publishes `llm:settings-changed`. `clearSettings` and `getSettingsStatus` are guarded the same way.
+Stores the connection settings in memory (nothing is persisted; closing the app forgets them). `baseUrl` is the address up to the conversation path prefix (e.g. `https://api.openai.com/v1`) — the plugin appends `/chat/completions` itself and tolerates any number of trailing slashes. The key is optional: local models and self-hosted proxies may not need one, and then no Authorization header is sent. Surface validation only: absolute http(s) URL, non-empty model name. A base URL carrying a query string or fragment is refused (`LLM_SETTINGS_INVALID`): both would swallow the appended `/chat/completions` path and send the conversation to the wrong address. Throws `LLM_SETTINGS_INVALID` on bad input and `SERVICE_UNAVAILABLE` after deactivation/shutdown (unlike the conversation methods, the settings methods stay usable between prepare and activate). Publishes `llm:settings-changed`. `clearSettings` and `getSettingsStatus` are guarded the same way.
 
 #### `clearSettings()`
 
@@ -47,7 +47,7 @@ Messages: `[{ role: 'system'|'user'|'assistant', content: [{ type: 'text', text 
 
 #### `complete(messages, options?)`
 
-Waits for the full answer. Resolves to `{ text, finishReason, usage? }` where `finishReason` is `'stop'` (complete), `'length'` (cut by the length cap) or `'content_filter'` (blocked by the provider). Rejects with a categorized structured error.
+Waits for the full answer. Resolves to `{ text, finishReason, usage? }` where `finishReason` is `'stop'` (complete), `'length'` (cut by the length cap) or `'content_filter'` (blocked by the provider). Rejects with a categorized structured error. A response carrying a finish reason the plugin does not know (any present value outside the three above) is an unreadable provider response, not an ordinary completion: it rejects with `LLM_INVALID_RESPONSE`; in a stream the same event ends the stream as `interrupted` with the same code — text delivered before that event stays with the caller.
 
 #### `stream(messages, options?, { onText })`
 
@@ -74,7 +74,7 @@ No message text, no key — the event carries nothing at all.
 | Code | Situation | Type |
 |---|---|---|
 | `LLM_NOT_CONFIGURED` | A call was made before any settings exist. | operational |
-| `LLM_SETTINGS_INVALID` | Surface-invalid settings (bad URL, empty model, empty key). | operational |
+| `LLM_SETTINGS_INVALID` | Surface-invalid settings (bad URL, URL with a query string or fragment, empty model, empty key). | operational |
 | `LLM_INPUT_INVALID` | Malformed call input (bad message shape, unknown role, missing `onText`, bad option values). | operational |
 | `LLM_UNAUTHORIZED` | Provider answered 401/403: the key is invalid or lacks access. | operational |
 | `LLM_MODEL_NOT_FOUND` | Provider answered 404, or a 400 says the model does not exist. | operational |

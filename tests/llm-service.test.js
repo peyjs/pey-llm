@@ -799,3 +799,75 @@ test('should_end_the_stream_as_unavailable_when_deactivation_lands_before_the_tr
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'SERVICE_UNAVAILABLE', 'no fake completion for a dead plugin');
 });
+
+test('should_reject_with_invalid_response_when_a_complete_response_carries_an_unknown_finish_reason', async () => {
+  // Round-11 regression: the helper-level rule (normalizeFinishReason
+  // throws on an unknown PRESENT reason) must be locked at the SERVICE
+  // wiring too — the complete path maps that throw to LLM_INVALID_RESPONSE.
+  const { service } = createService({
+    request: () => ({ ending: 'completed', status: 200, headers: {}, body: encode(JSON.stringify(completionBody('پاسخ', { finish: 'tool_calls' }))) }),
+  });
+  service.setSettings(settings());
+
+  const error = await service.complete([userMessage('سلام')]).catch((caught) => caught);
+  assert.equal(error?.code, 'LLM_INVALID_RESPONSE');
+});
+
+test('should_report_invalid_response_when_a_stream_event_carries_an_unknown_finish_reason', async () => {
+  // Round-11 regression: the stream path's unknown-reason handling — the
+  // SSE processor marks the stream invalid, the ending is interrupted with
+  // LLM_INVALID_RESPONSE, and the text delivered BEFORE the unreadable
+  // event stays with the caller (never an ordinary completion).
+  const received = [];
+  const text = `data: ${JSON.stringify(deltaEvent('متن', { finish_reason: 'tool_calls' }))}\n\ndata: [DONE]\n\n`;
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, [encode(text)]),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, { onText: (t) => received.push(t) });
+  const final = await handle.done;
+
+  assert.deepEqual(received, ['متن'], 'the text before the unreadable event was delivered');
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'LLM_INVALID_RESPONSE');
+});
+
+test('should_settle_the_end_marker_without_a_trailing_newline_when_the_stream_closes_normally', async () => {
+  // Round-11 regression: a final event with no trailing line break (minimal
+  // OpenAI-compatible proxies) used to rot in the parser buffer forever —
+  // the provider closed the stream normally yet the end marker never
+  // landed, reporting an ordinary completion as STREAM_INTERRUPTED. The
+  // done path flushes the parser's remainder with one synthetic line break.
+  const received = [];
+  const text = `data: ${JSON.stringify(deltaEvent('پایان'))}\n\ndata: [DONE]`;
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, [encode(text)]),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, { onText: (t) => received.push(t) });
+  const final = await handle.done;
+
+  assert.deepEqual(received, ['پایان']);
+  assert.equal(final.ending, 'completed', 'the flushed end marker settles the stream normally');
+  assert.equal(final.finishReason, 'stop');
+});
+
+test('should_split_lines_on_all_three_sse_separators_when_the_provider_uses_cr_only', async () => {
+  // Round-11: bare CR is one of the SSE spec's three line terminators — a
+  // CR-only stream used to yield ZERO events (nothing was ever split), so
+  // even the end marker never landed.
+  const received = [];
+  const text = `data: ${JSON.stringify(deltaEvent('جدا'))}\r\rdata: [DONE]\r`;
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, [encode(text)]),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, { onText: (t) => received.push(t) });
+  const final = await handle.done;
+
+  assert.deepEqual(received, ['جدا']);
+  assert.equal(final.ending, 'completed');
+});

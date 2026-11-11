@@ -17,7 +17,7 @@
       "methods": [
         {
           "name": "setSettings",
-          "description": "Stores the user's connection settings in memory: base URL, model name and optional API key. Performs surface validation only (valid absolute http(s) base URL, non-empty model name). In-flight requests keep the settings they started with.",
+          "description": "Stores the user's connection settings in memory: base URL, model name and optional API key. Performs surface validation only (valid absolute http(s) base URL WITHOUT a query string or fragment, non-empty model name). In-flight requests keep the settings they started with.",
           "params": [
             {
               "name": "input",

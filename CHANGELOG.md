@@ -2,10 +2,11 @@
 
 ## [1.0.2] - 1405-08-19
 
-Round-2 through round-8 review fixes (all unpublished; one release).
+Round-2 through round-11 review fixes (all unpublished; one release).
 
 ### Fixed
 
+- Round 11: the SSE processor honors ALL THREE of the SSE spec's line separators (LF, CRLF and bare CR — a CR-only stream used to yield ZERO events, so even the end marker never landed), and a trailing lone CR is held across chunk boundaries so a CRLF split between chunks still splits correctly; a final event with NO trailing line break (minimal OpenAI-compatible proxies) is settled by one synthetic line break the done path feeds at a normal close — without it the end marker rotted in the parser buffer and a stream the provider closed normally reported as `LLM_STREAM_INTERRUPTED` (two tests). The round-10 unknown-finish-reason rule is now locked at the SERVICE wiring, not just the pure helper: a complete response with an unknown reason rejects `LLM_INVALID_RESPONSE`, and a stream event with one ends interrupted with the same code while text delivered before it stays with the caller (two tests; 72 total). And the round-10 baseUrl rule reached the contract documents: the manifest's `setSettings` description, the reference's Settings section and its `LLM_SETTINGS_INVALID` row, and the requirements' validation clause all state the no-query/no-fragment rule explicitly; the reference's Conversation section states the unknown-finish-reason fate too.
 - The settings guard is now a DECLARED contract: `SERVICE_UNAVAILABLE` is listed in the manifest for `setSettings`, `clearSettings` and `getSettingsStatus`, and the reference documents it (plus the pre-activation allowance for the settings methods, which unlike the conversation methods stay usable between prepare and activate).
 - The handler-error catch uses the shared defensive cancel too: a throwing cancel while stopping the transfer after a broken `onText` can no longer escape raw into the transport's read loop; deactivate's cleanup loop uses the same helper (gate test added for the combined failure).
 - The rejection-window test now holds its rejection on a gate instead of a real timer (67 tests).
