@@ -31,7 +31,7 @@ The service `pey.llm.service` provides five methods.
 
 #### `setSettings({ baseUrl, model, apiKey? })`
 
-Stores the connection settings in memory (nothing is persisted; closing the app forgets them). `baseUrl` is the address up to the conversation path prefix (e.g. `https://api.openai.com/v1`) — the plugin appends `/chat/completions` itself and tolerates any number of trailing slashes. The key is optional: local models and self-hosted proxies may not need one, and then no Authorization header is sent. Surface validation only: absolute http(s) URL, non-empty model name. Throws `LLM_SETTINGS_INVALID` on bad input. Publishes `llm:settings-changed`.
+Stores the connection settings in memory (nothing is persisted; closing the app forgets them). `baseUrl` is the address up to the conversation path prefix (e.g. `https://api.openai.com/v1`) — the plugin appends `/chat/completions` itself and tolerates any number of trailing slashes. The key is optional: local models and self-hosted proxies may not need one, and then no Authorization header is sent. Surface validation only: absolute http(s) URL, non-empty model name. Throws `LLM_SETTINGS_INVALID` on bad input and `SERVICE_UNAVAILABLE` after deactivation/shutdown (unlike the conversation methods, the settings methods stay usable between prepare and activate). Publishes `llm:settings-changed`. `clearSettings` and `getSettingsStatus` are guarded the same way.
 
 #### `clearSettings()`
 

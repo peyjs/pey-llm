@@ -523,17 +523,20 @@ test('should_report_unavailable_when_a_rejected_request_lands_after_deactivation
   // The acquisition window with a REJECTING transport: deactivate during
   // the await must surface the standard unavailable error, never the
   // delivery-mapped transport code for a dead plugin.
+  const gate = createGate();
   const { service, deactivate } = createService({
     request: () => new Promise((resolve, reject) => {
-      setTimeout(() => reject(Object.assign(new Error('network down'), {
+      // Held on a gate: deterministic rejection timing, no real timers.
+      gate.wait().then(() => reject(Object.assign(new Error('network down'), {
         code: 'HTTP_NETWORK_FAILED', source: 'pey.http', type: 'operational', timestamp: 't',
-      })), 5);
+      })));
     }),
   });
   service.setSettings(settings());
 
   const pending = service.complete([userMessage('سلام')]);
   deactivate();
+  gate.open();
   await assert.rejects(
     () => pending,
     (error) => error.code === 'SERVICE_UNAVAILABLE' && error.source === 'pey.llm',
@@ -573,14 +576,53 @@ test('should_not_leak_a_raw_cancel_failure_through_the_windows_or_the_handle', a
   deactivate();
   const handle = await handlePromise;
 
-  // Every cancel path is defensive: deactivate's cleanup loop, the
-  // acquisition window and the returned handle all swallow a throwing
-  // cancel instead of leaking it raw.
+  // Every cancel path is defensive: the acquisition window and the returned
+  // handle both swallow a throwing cancel instead of leaking it raw (the
+  // transport never registered in activeHandles here, so deactivate's
+  // cleanup loop is not part of this count).
   assert.doesNotThrow(() => handle.cancel());
-  assert.equal(cancelCalls, 2, 'the cleanup loop and the handle both reached the cancel');
+  assert.equal(cancelCalls, 2, 'the acquisition window and the handle both reached the cancel');
   const final = await handle.done;
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+});
+
+test('should_keep_the_read_loop_alive_when_the_handler_fails_and_the_cancel_throws', async () => {
+  // A throwing onText handler cancels the transfer — and if that cancel
+  // itself throws, the raw error must not escape into the transport's read
+  // loop: the stream still ends as the structured handler interruption.
+  let cancelCalls = 0;
+  const gate = createGate();
+  const { service } = createService({
+    stream: (input, handlers) => {
+      const transport = makeStreamHandle(handlers, [encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\n`)], {
+        gates: [gate],
+        finalEnding: { ending: 'completed', status: 200, headers: {}, body: new Uint8Array() },
+      });
+      transport.cancel = () => {
+        cancelCalls += 1;
+        throw new Error('cancel exploded');
+      };
+      return transport;
+    },
+  });
+  service.setSettings(settings());
+
+  const handlePromise = service.stream([userMessage('سلام')], undefined, {
+    onText: () => {
+      throw new Error('handler exploded');
+    },
+  });
+  // The chunk must arrive only after the service has taken the transport
+  // (that assignment is the sink's handle to cancel through).
+  const handle = await handlePromise;
+  gate.open();
+  const final = await handle.done;
+
+  assert.ok(cancelCalls >= 1, 'the handler-error path reached the cancel');
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'LLM_REQUEST_FAILED');
+  assert.equal(final.error.source, 'pey.llm');
 });
 
 test('should_refuse_the_result_when_the_completion_lands_after_deactivation', async () => {
