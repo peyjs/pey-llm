@@ -24,6 +24,14 @@ test('should_refuse_non_object_options_when_options_are_not_an_object', () => {
 
 test('should_map_json_mode_to_the_response_format_when_requested', () => {
   assert.deepEqual(buildOptions({ json: true }), { response_format: { type: 'json_object' } });
+  // A malformed flag is a loud input error like maxTokens/temperature — a
+  // silent "off" would hand the caller raw text instead of JSON.
+  for (const bad of ['yes', 1, { deep: true }]) {
+    assert.throws(
+      () => buildOptions({ json: bad }),
+      (error) => error.code === 'LLM_INPUT_INVALID',
+    );
+  }
   assert.deepEqual(buildOptions({ json: false }), {});
 });
 
@@ -59,13 +67,23 @@ test('should_fall_back_to_request_failed_when_the_400_body_is_unreadable', () =>
 
 // --- normalizeFinishReason ------------------------------------------------
 
-test('should_pass_declared_finish_reasons_through_when_reading_and_null_the_rest', () => {
+test('should_pass_declared_finish_reasons_through_when_reading_and_null_absence', () => {
   for (const reason of FINISH_REASONS) {
     assert.equal(normalizeFinishReason(reason), reason);
   }
-  assert.equal(normalizeFinishReason('weird_reason'), null);
+  // Absence defaults downstream to 'stop'; any PRESENT value outside the
+  // declared set (an unknown string or garbage) is an unreadable response
+  // and throws instead (round 10).
   assert.equal(normalizeFinishReason(undefined), null);
-  assert.equal(normalizeFinishReason(42), null);
+  assert.equal(normalizeFinishReason(null), null);
+  assert.throws(
+    () => normalizeFinishReason('weird_reason'),
+    (error) => error.code === 'LLM_INVALID_RESPONSE',
+  );
+  assert.throws(
+    () => normalizeFinishReason(42),
+    (error) => error.code === 'LLM_INVALID_RESPONSE',
+  );
 });
 
 // --- createSseParser ------------------------------------------------------

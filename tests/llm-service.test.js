@@ -57,6 +57,10 @@ test('should_reject_surface_invalid_settings_when_a_field_is_malformed', () => {
   assert.throws(() => service.setSettings({ baseUrl: 'not a url', model: 'm' }), (error) => error.code === 'LLM_SETTINGS_INVALID');
   assert.throws(() => service.setSettings({ baseUrl: 'https://api.example.com', model: '' }), (error) => error.code === 'LLM_SETTINGS_INVALID');
   assert.throws(() => service.setSettings({ baseUrl: 'ftp://api.example.com', model: 'm' }), (error) => error.code === 'LLM_SETTINGS_INVALID');
+  // A query or fragment would swallow /chat/completions into itself —
+  // rejected at save time, while the dialog can still point at the field.
+  assert.throws(() => service.setSettings({ baseUrl: 'https://api.example.com/v1?x=1', model: 'm' }), (error) => error.code === 'LLM_SETTINGS_INVALID');
+  assert.throws(() => service.setSettings({ baseUrl: 'https://api.example.com/v1#frag', model: 'm' }), (error) => error.code === 'LLM_SETTINGS_INVALID');
   assert.throws(() => service.setSettings({ baseUrl: 'https://api.example.com', model: 'm', apiKey: '' }), (error) => error.code === 'LLM_SETTINGS_INVALID');
   assert.equal(service.getSettingsStatus().configured, false);
 });
