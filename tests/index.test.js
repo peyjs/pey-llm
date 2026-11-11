@@ -112,6 +112,26 @@ test('should_refuse_calls_when_called_before_activation', async () => {
   );
 });
 
+test('should_keep_the_settings_methods_usable_between_prepare_and_activate_while_the_conversation_methods_stay_refused', async () => {
+  // The documented contract (reference, Settings section): unlike the
+  // conversation methods, the settings methods stay usable in the
+  // pre-activation window — the service-level guard for them must never
+  // harden without a test breaking here.
+  const context = createPrepareContext();
+  const registrations = await prepare(context);
+  const service = registrations[0].object;
+
+  assert.deepEqual(service.setSettings({ baseUrl: 'https://api.example.com/v1', model: 'test-model' }), { ok: true, hasApiKey: false });
+  assert.deepEqual(service.getSettingsStatus(), { configured: true, baseUrl: 'https://api.example.com/v1', model: 'test-model', hasApiKey: false });
+  assert.deepEqual(service.clearSettings(), { ok: true });
+  assert.deepEqual(service.getSettingsStatus(), { configured: false, baseUrl: null, model: null, hasApiKey: false });
+
+  await assert.rejects(
+    () => service.complete([]),
+    (error) => error.code === 'SERVICE_UNAVAILABLE',
+  );
+});
+
 test('should_match_manifest_contract_when_loaded', async () => {
   const manifest = JSON.parse(await readFile(MANIFEST_PATH, 'utf8'));
   const pkg = JSON.parse(await readFile(PACKAGE_PATH, 'utf8'));

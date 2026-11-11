@@ -556,7 +556,7 @@ test('should_refuse_the_settings_methods_when_called_after_deactivation', async 
   assert.ok(!published.some((event) => event.type === 'llm:settings-changed'), 'no settings event for a dead plugin');
 });
 
-test('should_not_leak_a_raw_cancel_failure_through_the_windows_or_the_handle', async () => {
+test('should_not_leak_a_raw_cancel_failure_when_a_window_or_the_handle_cancels_a_settling_transfer', async () => {
   // The windowed cancels and the returned handle use the same defensive
   // cancel as deactivate's cleanup loop: a throwing cancel on a settling
   // transfer never crosses the boundary raw.

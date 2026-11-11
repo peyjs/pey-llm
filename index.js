@@ -1,6 +1,9 @@
 // Wires the LLM service into Bonyan's two-phase plugin lifecycle.
 
-import { HTTP_SERVICE, PLUGIN_NAME, SERVICE_NAME } from './lib/constants.js';
+import { CORE_EVENT_SERVICE_UNAVAILABLE,
+  CRITICAL_DEPENDENCY_LOST,
+  HTTP_SERVICE,
+  REQUIRED_DEPENDENCY_UNAVAILABLE, PLUGIN_NAME, SERVICE_NAME } from './lib/constants.js';
 import { createLlmService } from './lib/llm-service.js';
 
 const state = { http: null, events: null };
@@ -34,7 +37,7 @@ function handleServiceUnavailable(event) {
     return;
   }
   savedContext.reportCriticalError({
-    code: 'REQUIRED_DEPENDENCY_LOST',
+    code: CRITICAL_DEPENDENCY_LOST,
     message: `Required service ${HTTP_SERVICE} is no longer available`,
     source: PLUGIN_NAME,
     type: 'critical',
@@ -54,7 +57,7 @@ export async function prepare(prepareContext) {
   teardown();
   state.events = prepareContext.events ?? null;
   savedContext = prepareContext;
-  const subscribed = prepareContext.events?.subscribe('core:service-unavailable', handleServiceUnavailable);
+  const subscribed = prepareContext.events?.subscribe(CORE_EVENT_SERVICE_UNAVAILABLE, handleServiceUnavailable);
   unsubscribeUnavailable = typeof subscribed === 'function' ? subscribed : null;
   lifecycle = createLlmService(state);
   prepareContext.onDeactivated = () => teardown();
@@ -72,7 +75,7 @@ export async function activate(services) {
   if (!http) {
     // Boundary errors are always structured, startup included.
     throw Object.assign(new Error(`Required service is unavailable: ${HTTP_SERVICE}`), {
-      code: 'REQUIRED_DEPENDENCY_UNAVAILABLE',
+      code: REQUIRED_DEPENDENCY_UNAVAILABLE,
       source: PLUGIN_NAME,
       type: 'startup',
       timestamp: new Date().toISOString(),

@@ -2,13 +2,14 @@
 
 ## [1.0.2] - 1405-08-19
 
-Round-2 through round-7 review fixes (all unpublished; one release).
+Round-2 through round-8 review fixes (all unpublished; one release).
 
 ### Fixed
 
 - The settings guard is now a DECLARED contract: `SERVICE_UNAVAILABLE` is listed in the manifest for `setSettings`, `clearSettings` and `getSettingsStatus`, and the reference documents it (plus the pre-activation allowance for the settings methods, which unlike the conversation methods stay usable between prepare and activate).
 - The handler-error catch uses the shared defensive cancel too: a throwing cancel while stopping the transfer after a broken `onText` can no longer escape raw into the transport's read loop; deactivate's cleanup loop uses the same helper (gate test added for the combined failure).
 - The rejection-window test now holds its rejection on a gate instead of a real timer (67 tests).
+- Round 8: the error table's `SERVICE_UNAVAILABLE` row now states the settings-methods exception (usable between prepare and activate) instead of contradicting the Settings section two pages above; that pre-activation allowance is locked by a dedicated service-level test (settings work, `complete` still refuses) so the guard can never silently harden (68 tests); the last test name outside the `should_..._when_...` convention moved into it; and the core-contract strings in `index.js` (`core:service-unavailable`, `REQUIRED_DEPENDENCY_LOST`, `REQUIRED_DEPENDENCY_UNAVAILABLE`) joined the plugin's constants module instead of staying magic literals.
 
 - The transport's immediate rejections (address policy, validation) now cross the boundary through the delivery mapping (`LLM_REQUEST_FAILED`) instead of leaking undeclared `HTTP_*` codes.
 - A deactivation landing while the transport was being resolved cancels the transfer right away, and a stream completing after deactivation reports the standard unavailable error instead of a fake completion.
