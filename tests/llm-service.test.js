@@ -1263,3 +1263,36 @@ test('should_resolve_done_only_after_the_queued_delivery_settles_when_the_provid
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'LLM_RATE_LIMITED');
 });
+
+test('should_settle_done_as_unavailable_when_deactivation_lands_on_a_never_settling_handler_with_an_early_return_shape', { timeout: 2000 }, async () => {
+  // Round-19 P2 regression: the round-18 chain wait raced only the CALLER's
+  // cancel gate — deactivate opened no gate, so with a never-settling
+  // handler promise and an EARLY-return ending shape (transport cut, or a
+  // provider error status) `done` parked forever; the reference promises
+  // done always resolves to one of the three endings, and deactivate's own
+  // comment promises no silent hangs. The shared death gate now settles
+  // the wait on plugin death; the availability re-check lands the ending.
+  const received = [];
+  const { service, deactivate } = createService({
+    stream: (input, handlers) => makeStreamHandle(
+      handlers,
+      [encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\ndata: ${JSON.stringify(deltaEvent('دوم'))}\n\n`)],
+      {
+        finalEnding: { ending: 'interrupted', error: { code: 'HTTP_STREAM_INTERRUPTED', message: 'cut', source: 'pey.http', type: 'operational', timestamp: 't' } },
+      },
+    ),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: async () => new Promise(() => {}),
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  deactivate();
+  const final = await handle.done;
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(received, [], 'a dead plugin never runs the caller handler');
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE', 'the death gate settles the chain wait into the standard ending');
+});
