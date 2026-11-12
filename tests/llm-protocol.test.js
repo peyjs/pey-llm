@@ -174,21 +174,29 @@ test('should_dispatch_the_pending_event_at_stream_end_when_flush_is_called', () 
   assert.equal(sink.done, true);
 });
 
-test('should_stop_delivering_events_after_the_handler_fails_when_the_chunk_holds_more', () => {
-  // Round-13: the parser's decided-ending guards now include the broken
-  // handler flag — a multi-delta chunk whose FIRST delta throws delivers
-  // exactly ONE call, not the whole rest of the chunk.
+test('should_stop_dispatching_within_the_same_feed_when_the_handler_throws_on_the_first_delta', () => {
+  // Round-14: the round-13 version of this test set `handlerFailed` BY HAND
+  // before feeding, so only the entry guard was exercised and the REAL
+  // scenario (the wrapper's catch sets the flag MID-DISPATCH, and the
+  // remaining events of the same chunk must not be parsed or delivered)
+  // had no locking test. This is the real path: a throwing onText wrapped
+  // exactly like the service wraps it, on a three-delta chunk.
   const sink = makeSink();
   let calls = 0;
-  sink.onText = () => {
-    calls += 1;
-    throw new Error('handler gave up');
+  sink.onText = (text) => {
+    try {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error('handler gave up');
+      }
+      void text;
+    } catch {
+      sink.handlerFailed = true;
+    }
   };
-  sink.handlerFailed = false;
   const feed = createSseParser(sink);
   const delta = (text) => `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`;
 
-  sink.handlerFailed = true; // the service sets this from its wrapper's catch
   feed(`${delta('یک')}${delta('دو')}${delta('سه')}`);
-  assert.equal(calls, 0, 'the parser stopped before delivering anything after the flag');
+  assert.equal(calls, 1, 'exactly one delivery — the remaining deltas of the chunk never dispatch');
 });

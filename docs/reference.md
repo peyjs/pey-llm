@@ -54,7 +54,7 @@ Waits for the full answer. Resolves to `{ text, finishReason, usage? }` where `f
 Delivers the answer text progressively through `onText` as it arrives — the shared flow pattern: resolves to a handle `{ cancel, done }`; `done` never rejects and resolves exactly one of three endings. Stream events follow the SSE framing: line separators may be LF, CRLF or bare CR, one event may carry SEVERAL `data:` lines (joined per the SSE spec and parsed as one payload — a payload broken mid-JSON-string-literal is refused as unreadable), and the pending event dispatches at the blank-line terminator or at the stream's normal close. Events separated by a single line break with NO blank line fuse into ONE event per the spec — if the fused payload is not valid JSON, the stream is refused with `LLM_INVALID_RESPONSE` (a minimal proxy sending that shape is a framing fault on its side):
 
 - `{ ending: 'completed', finishReason, usage? }` — the provider's end marker arrived.
-- `{ ending: 'interrupted', error }` — network, timeout, a stream cut mid-way, or a stream that closed **without** the end marker (never counted as completed).
+- `{ ending: 'interrupted', error }` — network, timeout, a stream cut mid-way, a stream that closed **without** the end marker (never counted as completed), or the CALLER's own `onText` throwing: the transfer stops immediately, no further text is delivered (a throw on the flush-dispatched final delta included), and the code is `LLM_REQUEST_FAILED` with the handler-stop message.
 - `{ ending: 'cancelled' }` — the caller cancelled; no text is delivered after the cancel.
 
 Raw SSE bytes come from `pey.http` undecoded; a streaming `TextDecoder` reassembles a multi-byte character torn between chunks.
@@ -84,7 +84,7 @@ No message text, no key — the event carries nothing at all.
 | `LLM_UNSUPPORTED_CONTENT` | A message carried a non-text content part. | operational |
 | `LLM_INVALID_RESPONSE` | The provider response (or a stream event) could not be understood. | operational |
 | `LLM_STREAM_INTERRUPTED` | The stream was cut mid-way or closed without the end marker. | operational |
-| `LLM_REQUEST_FAILED` | Any other provider refusal or delivery failure. | operational |
+| `LLM_REQUEST_FAILED` | Any other provider refusal or delivery failure, or the receiving `onText` handler throwing (the transfer stops immediately; no further text is delivered). | operational |
 | `HTTP_NETWORK_FAILED` / `HTTP_TIMEOUT` | Passed through unchanged from `pey.http` — the caller must tell connection loss and timeouts apart. | operational |
 | `SERVICE_UNAVAILABLE` | Conversation methods: called before activation or after deactivation/shutdown; settings methods: only after deactivation/shutdown (they stay usable between prepare and activate — see the Settings section); any settlement of an in-flight request (both `complete` and `stream`, whatever shape the transport ended in — provider status, delivery error or handler failure included) reports this code after deactivation, with `stream` shaping it as an interrupted ending. | operational |
 
