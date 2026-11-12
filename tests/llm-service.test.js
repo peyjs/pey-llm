@@ -1045,3 +1045,133 @@ test('should_report_request_failed_when_an_async_handler_rejects_on_the_flushed_
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'LLM_REQUEST_FAILED', 'the async handler bug on the flushed delta keeps the handler-stop code');
 });
+
+test('should_deliver_nothing_after_the_caller_cancels_when_deltas_are_queued_behind_a_slow_handler', async () => {
+  // Round-17 P1 regression: the delivery chain's steps only saw
+  // handlerFailed — deltas queued behind a slow async handler were still
+  // delivered AFTER the caller cancelled (probe: ['دو','سه'] post-cancel),
+  // breaking "no text is delivered after the cancel" (stated three times
+  // in the contract). The chain steps see the cancel flag now.
+  const received = [];
+  let releaseFirst = null;
+  const gate = new Promise((resolve) => { releaseFirst = resolve; });
+  const chunks = [
+    encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\ndata: ${JSON.stringify(deltaEvent('دوم'))}\n\ndata: ${JSON.stringify(deltaEvent('سوم'))}\n\n`),
+    encode('data: [DONE]\n\n'),
+  ];
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, chunks),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: async (text) => {
+      received.push(text);
+      if (text === 'اول') {
+        await gate;
+      }
+    },
+  });
+  // Deltas two and three are queued behind the parked first delivery.
+  await new Promise((resolve) => setImmediate(resolve));
+  handle.cancel();
+  releaseFirst();
+  const final = await handle.done;
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(received, ['اول'], 'only the delta delivered before the cancel reaches the handler');
+  assert.equal(final.ending, 'cancelled');
+});
+
+test('should_deliver_nothing_after_deactivation_when_deltas_are_queued_behind_a_slow_handler', async () => {
+  // Round-17 P1 regression (variant a): the round-12 rule ("a dead plugin
+  // never flushes buffered text into the caller's handler") now covers the
+  // delivery CHAIN too — deltas queued behind a slow handler are dropped
+  // when the plugin dies, and the ending reports the standard unavailable.
+  const received = [];
+  let releaseFirst = null;
+  const gate = new Promise((resolve) => { releaseFirst = resolve; });
+  const chunks = [
+    encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\ndata: ${JSON.stringify(deltaEvent('دوم'))}\n\n`),
+    encode('data: [DONE]\n\n'),
+  ];
+  const { service, deactivate } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, chunks),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: async (text) => {
+      received.push(text);
+      if (text === 'اول') {
+        await gate;
+      }
+    },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  deactivate();
+  releaseFirst();
+  const final = await handle.done;
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(received, ['اول'], 'a dead plugin never runs the caller handler');
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+});
+
+test('should_report_unavailable_when_deactivation_lands_while_done_waits_on_the_delivery_chain', async () => {
+  // Round-17 P1 regression (variant b): the settle window now includes the
+  // whole handler processing time — a settlement landing after
+  // deactivation reports the standard unavailable error, never a
+  // completed ending for a dead plugin.
+  const chunks = [
+    encode(`data: ${JSON.stringify(deltaEvent('یک'))}\n\ndata: ${JSON.stringify(deltaEvent('دو'))}\n\n`),
+    encode('data: [DONE]\n\n'),
+  ];
+  let releaseSecond = null;
+  const gate = new Promise((resolve) => { releaseSecond = resolve; });
+  const { service, deactivate } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, chunks),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: async (text) => {
+      if (text === 'دو') {
+        await gate;
+      }
+    },
+  });
+  const donePromise = handle.done;
+  // The transport completed; done is parked awaiting the delivery chain.
+  await new Promise((resolve) => setImmediate(resolve));
+  deactivate();
+  releaseSecond();
+  const final = await donePromise;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE', 'a settlement after death reports unavailable, never completed');
+});
+
+test('should_settle_done_as_cancelled_when_the_handler_never_settles_and_the_caller_cancels', async () => {
+  // Round-17 P2 regression: with a never-settling handler promise and a
+  // completed transport, `done` used to park on the delivery chain
+  // FOREVER — cancel could not reach it. Cancel now breaks the chain wait
+  // and settles the ending as cancelled ("done resolves to exactly one of
+  // three endings", always).
+  const chunks = [encode(`data: ${JSON.stringify(deltaEvent('یک'))}\n\n`), encode('data: [DONE]\n\n')];
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, chunks),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: () => new Promise(() => {}),
+  });
+  const donePromise = handle.done;
+  await new Promise((resolve) => setImmediate(resolve));
+  handle.cancel();
+  const final = await donePromise;
+
+  assert.equal(final.ending, 'cancelled');
+});
