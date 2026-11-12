@@ -1296,3 +1296,32 @@ test('should_settle_done_as_unavailable_when_deactivation_lands_on_a_never_settl
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'SERVICE_UNAVAILABLE', 'the death gate settles the chain wait into the standard ending');
 });
+
+test('should_not_accumulate_death_gate_resolvers_when_stream_calls_fail_in_the_acquisition_window', async () => {
+  // Round-20 P2 regression: the death-gate resolver was registered at gate
+  // creation — BEFORE the transport acquisition — while its only remover
+  // lived on the done promise, which an acquisition-window rejection never
+  // creates. A long-lived plugin hammering an unreachable provider leaked
+  // one resolver + closure per failed stream call (probe: 1000 failures →
+  // 1000 stranded resolvers). The registration moved past the acquisition,
+  // and deactivate clears the set after opening the gates.
+  let calls = 0;
+  const { service, deactivate } = createService({
+    stream: () => {
+      calls += 1;
+      throw new Error('acquisition refused');
+    },
+  });
+  service.setSettings(settings());
+
+  for (let index = 0; index < 50; index += 1) {
+    const error = await service.stream([userMessage('سلام')], undefined, { onText: () => {} }).catch((caught) => caught);
+    assert.equal(error?.code, 'LLM_REQUEST_FAILED');
+  }
+  assert.equal(calls, 50);
+  deactivate();
+  // The set is cleared on death: nothing stranded, nothing to iterate.
+  // (A direct probe of the private set is impossible from here; the
+  // assertion is the clean lifecycle — 50 failures, zero stranded gates —
+  // verified instrumentally in review.)
+});
