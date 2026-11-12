@@ -871,3 +871,33 @@ test('should_split_lines_on_all_three_sse_separators_when_the_provider_uses_cr_o
   assert.deepEqual(received, ['جدا']);
   assert.equal(final.ending, 'completed');
 });
+
+test('should_flush_nothing_after_deactivation_even_when_the_buffer_holds_a_delta', async () => {
+  // Round-12 regression: the parser flush ran BEFORE the availability
+  // guard, so a deactivation landing in the settle window could push the
+  // buffered remainder — a complete text delta — into the caller's
+  // handler after the plugin died. The flush now runs after every guard:
+  // a dead plugin delivers nothing, and the ending reports unavailable.
+  const received = [];
+  const gate = createGate();
+  const { service, deactivate } = createService({
+    stream: (input, handlers) => makeStreamHandle(
+      handlers,
+      // A buffered delta with NO trailing line break and NO end marker:
+      // without the guard reorder, the settle-window flush would have
+      // delivered 'دیررس' here.
+      [encode(`data: ${JSON.stringify(deltaEvent('دیررس'))}`)],
+      { gates: [gate], finalEnding: { ending: 'completed', status: 200, headers: {}, body: new Uint8Array() } },
+    ),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, { onText: (text) => received.push(text) });
+  deactivate();
+  gate.open();
+  const final = await handle.done;
+
+  assert.deepEqual(received, [], 'a dead plugin never flushes buffered text into the caller');
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+});

@@ -47,7 +47,7 @@ Messages: `[{ role: 'system'|'user'|'assistant', content: [{ type: 'text', text 
 
 #### `complete(messages, options?)`
 
-Waits for the full answer. Resolves to `{ text, finishReason, usage? }` where `finishReason` is `'stop'` (complete), `'length'` (cut by the length cap) or `'content_filter'` (blocked by the provider). Rejects with a categorized structured error. A response carrying a finish reason the plugin does not know (any present value outside the three above) is an unreadable provider response, not an ordinary completion: it rejects with `LLM_INVALID_RESPONSE`; in a stream the same event ends the stream as `interrupted` with the same code — text delivered before that event stays with the caller.
+Waits for the full answer. Resolves to `{ text, finishReason, usage? }` where `finishReason` is `'stop'` (complete), `'length'` (cut by the length cap) or `'content_filter'` (blocked by the provider). Stream events follow the SSE framing: line separators may be LF, CRLF or bare CR, one event may carry SEVERAL `data:` lines (joined per the SSE spec and parsed as one payload — a payload broken mid-JSON-string-literal is refused as unreadable), and the pending event dispatches at the blank-line terminator or at the stream's normal close. Rejects with a categorized structured error. A response carrying a finish reason the plugin does not know (any present value outside the three above) is an unreadable provider response, not an ordinary completion: it rejects with `LLM_INVALID_RESPONSE`; in a stream the same event ends the stream as `interrupted` with the same code — text delivered before that event stays with the caller.
 
 #### `stream(messages, options?, { onText })`
 

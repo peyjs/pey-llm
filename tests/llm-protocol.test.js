@@ -110,7 +110,7 @@ test('should_ignore_empty_data_lines_when_the_payload_is_blank', () => {
   const sink = makeSink();
   const feed = createSseParser(sink);
 
-  feed('data:\ndata: {"choices":[{"delta":{"content":"سلام"}}]}\ndata: \ndata: [DONE]\n');
+  feed('data:\n\ndata: {"choices":[{"delta":{"content":"سلام"}}]}\n\ndata: \ndata: [DONE]\n\n');
 
   assert.deepEqual(sink.texts, ['سلام']);
   assert.equal(sink.done, true);
@@ -130,9 +130,46 @@ test('should_carry_the_finish_reason_and_usage_when_the_provider_sends_them', ()
   const sink = makeSink();
   const feed = createSseParser(sink);
 
-  feed('data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"total_tokens":7}}\n\ndata: [DONE]\n');
+  feed('data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"total_tokens":7}}\n\ndata: [DONE]\n\n');
 
   assert.equal(sink.finishReason, 'length');
   assert.deepEqual(sink.usage, { total_tokens: 7 });
+  assert.equal(sink.done, true);
+});
+
+test('should_join_multi_line_data_fields_into_one_event_when_the_event_terminates', () => {
+  // Round-12: the SSE spec lets one event carry SEVERAL `data:` lines,
+  // joined with `\n` and dispatched at the blank-line terminator. The old
+  // line-at-a-time parser parsed each line alone — a provider splitting
+  // one JSON payload across two lines invalidated the WHOLE stream.
+  const sink = makeSink();
+  const feed = createSseParser(sink);
+  const event = { choices: [{ delta: { content: 'چندسطری' } }], usage: { total_tokens: 3 } };
+  const json = JSON.stringify(event);
+  // The split point must be a TOP-LEVEL boundary: a newline inside a JSON
+  // string literal is invalid JSON, and the SSE join would (correctly)
+  // refuse a provider that breaks its payload mid-literal.
+  const cut = json.indexOf('"usage"');
+
+  feed(`data: ${json.slice(0, cut)}\ndata: ${json.slice(cut)}\n\ndata: [DONE]\n\n`);
+
+  assert.deepEqual(sink.texts, ['چندسطری'], 'the joined payload parses as one event');
+  assert.deepEqual(sink.usage, { total_tokens: 3 });
+  assert.equal(sink.invalid, undefined, 'the stream is never marked unreadable');
+  assert.equal(sink.done, true);
+});
+
+test('should_dispatch_the_pending_event_at_stream_end_when_flush_is_called', () => {
+  // EOF is an event terminator too: a final event with no trailing blank
+  // line still dispatches through the flush the service calls at a normal
+  // close — including a final line held behind a lone trailing CR.
+  const sink = makeSink();
+  const feed = createSseParser(sink);
+
+  feed(`data: ${JSON.stringify({ choices: [{ delta: { content: 'پایان' } }] })}\r\n\r\ndata: [DONE]\r`);
+  assert.equal(sink.done, undefined, 'nothing dispatches before the terminator');
+  feed.flush();
+
+  assert.deepEqual(sink.texts, ['پایان']);
   assert.equal(sink.done, true);
 });
