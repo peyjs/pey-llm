@@ -975,3 +975,73 @@ test('should_stop_the_stream_and_report_request_failed_when_an_async_handler_rej
     }
   }
 });
+
+test('should_deliver_exactly_one_delta_when_an_async_handler_rejects_mid_chunk', async () => {
+  // Round-16 P1 regression: the round-15 containment landed in a
+  // MICROTASK while the parser's stop-guards are synchronous — the
+  // remaining deltas of the SAME chunk dispatched before the flag was
+  // seen (three calls, three rejections). Deliveries are serialized
+  // through a chain now: the second queued delivery stops at its chain
+  // step once the first rejection settles. This locks the real call
+  // COUNT, which the round-15 test (asserting only the caller-side array)
+  // never did.
+  const unhandled = [];
+  const previousListeners = process.listeners('unhandledRejection');
+  process.removeAllListeners('unhandledRejection');
+  process.on('unhandledRejection', (reason) => unhandled.push(reason));
+  try {
+    let handlerCalls = 0;
+    const chunks = [
+      encode(`data: ${JSON.stringify(deltaEvent('یک'))}\n\ndata: ${JSON.stringify(deltaEvent('دو'))}\n\ndata: ${JSON.stringify(deltaEvent('سه'))}\n\n`),
+      encode('data: [DONE]\n\n'),
+    ];
+    const { service } = createService({
+      stream: (input, handlers) => makeStreamHandle(handlers, chunks),
+    });
+    service.setSettings(settings());
+
+    const handle = await service.stream([userMessage('سلام')], undefined, {
+      onText: async () => {
+        handlerCalls += 1;
+        throw new Error('async rejection on the first delta');
+      },
+    });
+    const final = await handle.done;
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(handlerCalls, 1, 'exactly one delivery — queued deliveries stop after the rejection settles');
+    assert.equal(final.ending, 'interrupted');
+    assert.equal(final.error.code, 'LLM_REQUEST_FAILED');
+    assert.equal(unhandled.length, 0, 'no unhandledRejection may escape the plugin');
+  } finally {
+    process.removeAllListeners('unhandledRejection');
+    for (const listener of previousListeners) {
+      process.on('unhandledRejection', listener);
+    }
+  }
+});
+
+test('should_report_request_failed_when_an_async_handler_rejects_on_the_flushed_final_delta', async () => {
+  // Round-16 P1 regression: the flush-path re-check is synchronous, but an
+  // async handler's flag lands in a microtask — the old order read `false`
+  // and the ending leaked as STREAM_INTERRUPTED (a framing verdict on a
+  // handler bug), exactly the misreport the round-13 sync fix closed. The
+  // done path awaits the delivery chain before re-checking.
+  const chunks = [encode(`data: ${JSON.stringify(deltaEvent('نیمه'))}\n\n`), encode(`data: ${JSON.stringify(deltaEvent('دیررس'))}`)];
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, chunks),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: async (text) => {
+      if (text === 'دیررس') {
+        throw new Error('async rejection on the flushed delta');
+      }
+    },
+  });
+  const final = await handle.done;
+
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'LLM_REQUEST_FAILED', 'the async handler bug on the flushed delta keeps the handler-stop code');
+});
