@@ -930,3 +930,48 @@ test('should_report_request_failed_when_the_handler_throws_on_the_flushed_final_
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'LLM_REQUEST_FAILED', 'the handler stop keeps its own code, not a framing fault');
 });
+
+test('should_stop_the_stream_and_report_request_failed_when_an_async_handler_rejects_with_no_unhandled_rejection', async () => {
+  // Round-15 P1 regression: an ASYNC receiving handler reports its failure
+  // as a rejected Promise, not a throw. The wrapper used to discard the
+  // return value — every rejection escaped as an unhandledRejection that
+  // KILLS the host process under Node's default mode, the transfer carried
+  // on delivering deltas, and the stream reported `completed`. A rejected
+  // promise now takes the same handler-stop path as a throw.
+  const unhandled = [];
+  const previousListeners = process.listeners('unhandledRejection');
+  process.removeAllListeners('unhandledRejection');
+  process.on('unhandledRejection', (reason) => unhandled.push(reason));
+  try {
+    const received = [];
+    const chunks = [
+      encode(`data: ${JSON.stringify(deltaEvent('یک'))}\n\n`),
+      encode(`data: ${JSON.stringify(deltaEvent('دو'))}\n\n`),
+      encode(`data: ${JSON.stringify(deltaEvent('سه'))}\n\n`),
+      encode('data: [DONE]\n\n'),
+    ];
+    const { service } = createService({
+      stream: (input, handlers) => makeStreamHandle(handlers, chunks),
+    });
+    service.setSettings(settings());
+
+    const handle = await service.stream([userMessage('سلام')], undefined, {
+      onText: async () => {
+        throw new Error('async handler rejection');
+      },
+    });
+    const final = await handle.done;
+    // Let any stray rejection surface before asserting.
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(received, [], 'a rejecting handler delivers nothing');
+    assert.equal(final.ending, 'interrupted');
+    assert.equal(final.error.code, 'LLM_REQUEST_FAILED', 'the async handler bug keeps the handler-stop code');
+    assert.equal(unhandled.length, 0, 'no unhandledRejection may escape the plugin');
+  } finally {
+    process.removeAllListeners('unhandledRejection');
+    for (const listener of previousListeners) {
+      process.on('unhandledRejection', listener);
+    }
+  }
+});
