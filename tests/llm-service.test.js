@@ -1153,7 +1153,7 @@ test('should_report_unavailable_when_deactivation_lands_while_done_waits_on_the_
   assert.equal(final.error.code, 'SERVICE_UNAVAILABLE', 'a settlement after death reports unavailable, never completed');
 });
 
-test('should_settle_done_as_cancelled_when_the_handler_never_settles_and_the_caller_cancels', async () => {
+test('should_settle_done_as_cancelled_when_the_handler_never_settles_and_the_caller_cancels', { timeout: 2000 }, async () => {
   // Round-17 P2 regression: with a never-settling handler promise and a
   // completed transport, `done` used to park on the delivery chain
   // FOREVER — cancel could not reach it. Cancel now breaks the chain wait
@@ -1174,4 +1174,92 @@ test('should_settle_done_as_cancelled_when_the_handler_never_settles_and_the_cal
   const final = await donePromise;
 
   assert.equal(final.ending, 'cancelled');
+});
+
+
+test('should_resolve_done_only_after_the_queued_delivery_settles_when_the_transport_is_cut', { timeout: 2000 }, async () => {
+  // Round-18 P1 regression, shape 1: the interrupted-transport early return
+  // skipped the delivery-chain wait — deltas queued behind a parked async
+  // handler were delivered AFTER done had already reported its ending,
+  // breaking "done resolves only after the last delivery settled". The
+  // chain wait now stands before every ending-shape branch: done STAYS
+  // pending while the queued delivery is parked, and resolves only after
+  // it settled.
+  const received = [];
+  let doneResolved = false;
+  let releaseFirst = null;
+  const gate = new Promise((resolve) => { releaseFirst = resolve; });
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(
+      handlers,
+      [encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\ndata: ${JSON.stringify(deltaEvent('دوم'))}\n\n`)],
+      {
+        finalEnding: { ending: 'interrupted', error: { code: 'HTTP_STREAM_INTERRUPTED', message: 'cut', source: 'pey.http', type: 'operational', timestamp: 't' } },
+      },
+    ),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: async (text) => {
+      received.push(text);
+      if (text === 'اول') {
+        await gate;
+      }
+    },
+  });
+  const donePromise = handle.done.then((final) => {
+    doneResolved = true;
+    return final;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(doneResolved, false, 'done is parked on the queued delivery');
+
+  releaseFirst();
+  const final = await donePromise;
+  assert.equal(doneResolved, true);
+  assert.deepEqual(received, ['اول', 'دوم'], 'the queued delta settled BEFORE done reported the ending');
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'LLM_STREAM_INTERRUPTED');
+});
+
+test('should_resolve_done_only_after_the_queued_delivery_settles_when_the_provider_answers_non_2xx', { timeout: 2000 }, async () => {
+  // Round-18 P1 regression, shape 2: the provider-error-status early return
+  // skipped the chain wait — same leak class as the cut transport.
+  const received = [];
+  let doneResolved = false;
+  let releaseFirst = null;
+  const gate = new Promise((resolve) => { releaseFirst = resolve; });
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(
+      handlers,
+      [encode(`data: ${JSON.stringify(deltaEvent('اول'))}\n\ndata: ${JSON.stringify(deltaEvent('دوم'))}\n\n`)],
+      {
+        finalEnding: { ending: 'completed', status: 429, headers: {}, body: encode(JSON.stringify(errorBody('slow down'))) },
+      },
+    ),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: async (text) => {
+      received.push(text);
+      if (text === 'اول') {
+        await gate;
+      }
+    },
+  });
+  const donePromise = handle.done.then((final) => {
+    doneResolved = true;
+    return final;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(doneResolved, false, 'done is parked on the queued delivery');
+
+  releaseFirst();
+  const final = await donePromise;
+  assert.equal(doneResolved, true);
+  assert.deepEqual(received, ['اول', 'دوم'], 'the queued delta settled BEFORE done reported the ending');
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'LLM_RATE_LIMITED');
 });
