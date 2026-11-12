@@ -1313,15 +1313,63 @@ test('should_not_accumulate_death_gate_resolvers_when_stream_calls_fail_in_the_a
     },
   });
   service.setSettings(settings());
+  // The non-enumerable test-only counter makes the private set observable:
+  // every assertion below FAILS on the pre-fix code (registration at gate
+  // creation, no clear), which stayed green without it.
+  assert.equal(service.__deathGateCount, 0, 'the set starts empty');
 
   for (let index = 0; index < 50; index += 1) {
     const error = await service.stream([userMessage('سلام')], undefined, { onText: () => {} }).catch((caught) => caught);
     assert.equal(error?.code, 'LLM_REQUEST_FAILED');
   }
   assert.equal(calls, 50);
+  assert.equal(service.__deathGateCount, 0, '50 acquisition failures strand ZERO resolvers');
   deactivate();
-  // The set is cleared on death: nothing stranded, nothing to iterate.
-  // (A direct probe of the private set is impossible from here; the
-  // assertion is the clean lifecycle — 50 failures, zero stranded gates —
-  // verified instrumentally in review.)
+  assert.equal(service.__deathGateCount, 0, 'deactivate clears the set');
 });
+
+test('should_release_the_death_gate_when_a_parked_stream_settles_through_deactivation', { timeout: 2000 }, async () => {
+  // Round-21: the gate lifecycle for the parked shape — an in-flight stream
+  // holds exactly one death gate; deactivation settles it and the gate is
+  // released (adds == removes across the whole lifecycle).
+  const { service, deactivate } = createService({
+    stream: (input, handlers) => makeStreamHandle(
+      handlers,
+      [encode(`data: ${JSON.stringify(deltaEvent('دیررس'))}\n\n`)],
+    ),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: async () => new Promise(() => {}),
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(service.__deathGateCount, 1, 'an in-flight stream holds exactly one death gate');
+  deactivate();
+  const final = await handle.done;
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(service.__deathGateCount, 0, 'the settled stream released its gate');
+});
+
+test('should_balance_the_death_gate_for_a_successful_stream', { timeout: 2000 }, async () => {
+  // Round-21: a completed stream holds its gate while in flight and
+  // releases it on settlement — adds == removes.
+  const received = [];
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(
+      handlers,
+      [encode(`data: ${JSON.stringify(deltaEvent('یک'))}\n\ndata: [DONE]\n\n`)],
+    ),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: (text) => received.push(text),
+  });
+  const final = await handle.done;
+  assert.deepEqual(received, ['یک']);
+  assert.equal(final.ending, 'completed');
+  assert.equal(service.__deathGateCount, 0, 'a completed stream balances its gate');
+});
+
