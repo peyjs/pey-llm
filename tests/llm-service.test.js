@@ -901,3 +901,32 @@ test('should_flush_nothing_after_deactivation_even_when_the_buffer_holds_a_delta
   assert.equal(final.ending, 'interrupted');
   assert.equal(final.error.code, 'SERVICE_UNAVAILABLE');
 });
+
+test('should_report_request_failed_when_the_handler_throws_on_the_flushed_final_delta', async () => {
+  // Round-13 regression: the flush runs AFTER every guard, so a delta it
+  // dispatches can be the FIRST delivery to break the handler — the old
+  // order checked `handlerFailed` only before the flush, and the ending
+  // fell through to STREAM_INTERRUPTED ("closed without an end marker"),
+  // blaming the framing for a caller bug.
+  const received = [];
+  // The second event has NO trailing blank line: only the flush delivers it.
+  const chunks = [encode(`data: ${JSON.stringify(deltaEvent('نیمه'))}\n\n`), encode(`data: ${JSON.stringify(deltaEvent('دیررس'))}`)];
+  const { service } = createService({
+    stream: (input, handlers) => makeStreamHandle(handlers, chunks),
+  });
+  service.setSettings(settings());
+
+  const handle = await service.stream([userMessage('سلام')], undefined, {
+    onText: (t) => {
+      if (t === 'دیررس') {
+        throw new Error('handler breaks on the final delta');
+      }
+      received.push(t);
+    },
+  });
+  const final = await handle.done;
+
+  assert.deepEqual(received, ['نیمه']);
+  assert.equal(final.ending, 'interrupted');
+  assert.equal(final.error.code, 'LLM_REQUEST_FAILED', 'the handler stop keeps its own code, not a framing fault');
+});
