@@ -2,8 +2,6 @@
 
 ## [1.0.2] - 1405-08-22
 
-Round-2 through round-21 review fixes (all unpublished; one release).
-
 ### Fixed
 
 - **Delivery lifecycle for async receiving handlers**: `onText` may be async — calls are SERIALIZED (each happens only after the previous result settled, so an async handler applies real backpressure and text order is preserved), a rejection takes the same handler-stop path as a throw (`LLM_REQUEST_FAILED`, no further delivery, no unhandled rejection escaping to kill the host process), a never-settling handler promise is cut by the caller's cancel or by deactivation (both settle a parked `done`), and `done` resolves only after the last delivery settled — across every ending shape, early returns included.
