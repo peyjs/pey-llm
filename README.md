@@ -5,27 +5,33 @@
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Bonyan Architecture](https://img.shields.io/badge/bonyan-0.11-56c3bf)](https://github.com/barnevis/bonyan)
 
-## Purpose
+## هدف
 
-Feature plugin of the Pey ecosystem: the single point of contact with an OpenAI-compatible LLM provider. Holds the user's connection settings in memory (base URL, model, optional key), shapes complete and streaming conversation calls over `pey.http`, and maps provider errors onto categorized structured codes. The API key never leaves the plugin's memory.
+افزونه‌ی ویژگی (feature) از زیست‌بوم پی برای تماس با فراهم‌کنندهٔ مدل زبانیِ سازگار با OpenAI: تنظیمات اتصال کاربر را در حافظه نگه می‌دارد (آدرس پایه، مدل، کلید اختیاری)، درخواست‌های کامل و جریانی را روی `pey.http` می‌سازد و خطاهای فراهم‌کننده را به کدهای ساخت‌یافتهٔ دسته‌بندی‌شده نگاشت می‌کند.
 
-## Structure
+## ساختار
 
-- `docs/requirements.md` — requirements; the construction source of truth.
-- `manifest.json` — plugin contract (identity, service, events).
-- `index.js` — Bonyan two-phase entry point (`prepare` / `activate`).
-- `lib/constants.js` — plugin names, error codes, protocol constants.
-- `lib/error.js` — standard Bonyan error factory.
-- `lib/llm-protocol.js` — pure OpenAI-protocol helpers (message/body shaping, provider-status error mapping, SSE parsing).
-- `lib/llm-service.js` — settings, request shaping, SSE decoding, error mapping.
-- `tests/` — unit tests (`node:test`, fake transport only).
+- `docs/` — سندهای پروژه.
+- `lib/` — منطق سرویس و یاران پروتکل.
+- `tests/` — آزمون‌های واحد.
+- `index.js` — نقطه‌ی ورود.
+- `manifest.json` — قرارداد افزونه.
 
-## Dependencies
+## وابستگی‌ها
 
-- **Required:** `pey.http` (`pey.http.service`).
-- **Optional:** none.
+- **الزامی:** `pey.http.service` — تمام انتقال شبکه از این سرویس می‌گذرد.
+- **اختیاری:** ندارد.
 
-## See Also
+## نصب و استفاده
 
-- [docs/requirements.md](docs/requirements.md) for the "what and why", written before the implementation.
-- [docs/reference.md](docs/reference.md) for the full API, events, errors, business rules, and constraints.
+افزونه با `manifest.json` و بستهٔ npm به برنامه‌ی میزبان افزوده می‌شود و پس از دو فاز آماده‌سازی و فعال‌سازی، سرویس `pey.llm.service` را عرضه می‌کند. میزبان تنظیمات اتصال کاربر را با `setSettings` نگه می‌دارد و با `complete` و `stream` با مدل گفت‌وگو می‌کند؛ کلید هرگز از حافظهٔ افزونه بیرون نمی‌رود و پیکربندی مانیفست ندارد.
+
+## مجوز
+
+این پروژه با مجوز MIT منتشر شده است؛ متن کامل در [LICENSE](LICENSE).
+
+## سندهای مرتبط
+
+- [معرفی](docs/introduction.md) — شناخت افزونه به زبان ساده.
+- [مرجع](docs/reference.md) — API، رویدادها، خطاها و پیکربندی.
+- [نیازمندی‌ها](docs/requirements.md) — سند ساخت افزونه، مکتوب پیش از پیاده‌سازی.
